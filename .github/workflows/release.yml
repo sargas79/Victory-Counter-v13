@@ -74,9 +74,16 @@ jobs:
           jq empty module-v13.json
           jq empty lang/en.json
           # The two manifests must stay the same package, differing only in the
-          # fields the step above is allowed to touch.
-          test "$(jq -r .id module.json)" = "$(jq -r .id module-v13.json)"
-          test "$(jq -r .version module.json)" = "$(jq -r .version module-v13.json)"
+          # three fields the derivation step is allowed to touch. Comparing the
+          # whole document with those deleted is what makes that a real guard:
+          # checking id and version alone would let a future edit to esmodules,
+          # styles, languages or relationships reach one track and not the other.
+          allowed_to_differ='del(.compatibility, .manifest, .download)'
+          diff <(jq -S "$allowed_to_differ" module.json) <(jq -S "$allowed_to_differ" module-v13.json)
+          # And the pinned track must actually be pinned.
+          test "$(jq -r .compatibility.minimum module-v13.json)" = "13"
+          test "$(jq -r .compatibility.maximum module-v13.json)" = "13"
+          test "$(jq -r .compatibility.verified module-v13.json)" = "$V13_VERIFIED"
 
       - name: Create module.zip
         run: zip -r module.zip module.json CHANGELOG.md LICENSE README.md lang scripts styles templates

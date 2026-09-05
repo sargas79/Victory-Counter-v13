@@ -325,16 +325,24 @@ control panel's window frame and the chat cards.
 Enough to establish that the module loaded and its core Foundry touchpoints
 resolved. Run it once per v13 world before trusting the rest of the plan.
 
-1. Enable the module. The console shows `[victory-counter] Ready. Core: 13.x`
-   and no deprecation warnings from the module's own files.
-2. The Token scene controls show the trophy (**Toggle Counter**) button for
-   everyone and the sliders (**Counter Control Panel**) button for the GM.
-3. Open the control panel. It has a title bar, an icon, and a working resize
+1. Enable the module and reload. The Token scene controls show the trophy
+   (**Toggle Counter**) button for everyone and the sliders (**Counter Control
+   Panel**) button for the GM. Those buttons appearing is the check: they are
+   registered from `registerHooks()`, so nothing draws them unless the module
+   parsed and its hooks ran.
+2. The console carries no `victory-counter` error and no core deprecation
+   warning naming a file under `modules/victory-counter/`.
+3. Optional version banner: turn on **Debug Logging** in the module settings and
+   reload. The console then prints
+   `[victory-counter] Ready. Core: 13.351. System: <id> <version>.` This line is
+   debug-gated, so with the setting off — its default — its absence means
+   nothing and is not a failure.
+4. Open the control panel. It has a title bar, an icon, and a working resize
    handle in the bottom-right corner.
-4. Add a track. The HUD appears; the panel and the HUD both show it.
-5. **Reset Progress** on that track opens a confirmation dialog, and cancelling
+5. Add a track. The HUD appears; the panel and the HUD both show it.
+6. **Reset Progress** on that track opens a confirmation dialog, and cancelling
    it leaves the value alone.
-6. Adjust the track with **Post Progress to Chat** on. A chat card renders with
+7. Adjust the track with **Post Progress to Chat** on. A chat card renders with
    its border, ring and status text, not as unstyled text.
 
 **Upgrading from the PF2e-only build**
