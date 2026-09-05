@@ -1,7 +1,7 @@
 # Victory Counter
 
 A shared, always-visible progress counter for **any game system** in
-**Foundry VTT v14**.
+**Foundry VTT v13 and v14**.
 
 The GM creates any number of named tracks and adjusts them as the scene plays
 out. Every player sees the same live state in a collapsible on-screen HUD.
@@ -62,12 +62,31 @@ A track runs in one of two **modes**:
 
 ### From a manifest URL
 
+There are two install tracks. Both ship identical module code from the same
+release; they differ only in the compatibility they declare.
+
+**Main track — recommended, works on v13 and v14**
+
 1. In Foundry, go to **Add-on Modules → Install Module**.
 2. Paste:
 ```
-https://github.com/sargas79/Victory-Counter/releases/latest/download/module.json
+https://github.com/sargas79/Victory-Counter-v13/releases/latest/download/module.json
 ```
 3. Click **Install**, then enable the module in your world.
+
+**v13-pinned track**
+
+Declares `maximum: 13`, so Foundry will never offer it as an update to a v14
+world. Use it if you run v13 and want a build that stays on the v13 line:
+
+```
+https://github.com/sargas79/Victory-Counter-v13/releases/latest/download/module-v13.json
+```
+
+The two are the same package id (`victory-counter`), so a world can have one or
+the other installed, not both. Switching tracks means uninstalling and
+reinstalling from the other URL; the world's tracks live in world settings and
+survive that untouched.
 
 ### Local development
 
@@ -85,7 +104,7 @@ Restart Foundry, then enable **Victory Counter** in
 On Windows, a symlink from an admin PowerShell prompt:
 
 ```powershell
-New-Item -ItemType SymbolicLink -Path "$env:LOCALAPPDATA\FoundryVTT\Data\modules\victory-counter" -Target "C:\path\to\Victory-Counter"
+New-Item -ItemType SymbolicLink -Path "$env:LOCALAPPDATA\FoundryVTT\Data\modules\victory-counter" -Target "C:\path\to\Victory-Counter-v13"
 ```
 
 ## Usage
@@ -293,8 +312,38 @@ setting, and deletes nothing. See the
 
 ## Manual test plan
 
-Run these in a v14 world under any system. Everything except the two-client
-checks can be done in a single GM session.
+Run these in a v13 or v14 world under any system. Everything except the
+two-client checks can be done in a single GM session. The module ships one code
+path for both generations, so a feature verified on one is expected to behave
+identically on the other — but the checks below are worth repeating on each
+generation you actually run, because the parts most likely to differ are the
+ones core Foundry draws around the module: the scene control buttons, the
+control panel's window frame and the chat cards.
+
+**v13 smoke test**
+
+Enough to establish that the module loaded and its core Foundry touchpoints
+resolved. Run it once per v13 world before trusting the rest of the plan.
+
+1. Enable the module and reload. The Token scene controls show the trophy
+   (**Toggle Counter**) button for everyone and the sliders (**Counter Control
+   Panel**) button for the GM. Those buttons appearing is the check: they are
+   registered from `registerHooks()`, so nothing draws them unless the module
+   parsed and its hooks ran.
+2. The console carries no `victory-counter` error and no core deprecation
+   warning naming a file under `modules/victory-counter/`.
+3. Optional version banner: turn on **Debug Logging** in the module settings and
+   reload. The console then prints
+   `[victory-counter] Ready. Core: 13.351. System: <id> <version>.` This line is
+   debug-gated, so with the setting off — its default — its absence means
+   nothing and is not a failure.
+4. Open the control panel. It has a title bar, an icon, and a working resize
+   handle in the bottom-right corner.
+5. Add a track. The HUD appears; the panel and the HUD both show it.
+6. **Reset Progress** on that track opens a confirmation dialog, and cancelling
+   it leaves the value alone.
+7. Adjust the track with **Post Progress to Chat** on. A chat card renders with
+   its border, ring and status text, not as unstyled text.
 
 **Upgrading from the PF2e-only build**
 
@@ -432,13 +481,40 @@ not carried over and are simply set again on first use.
 
 | | |
 |---|---|
-| Foundry VTT | v14 (verified 14.366) |
+| Foundry VTT | v13 and v14 (minimum 13, verified 14.366; the pinned track is verified 13.351) |
 | Game system | Any — no system is declared or required |
 | Dependencies | None |
 
 The module declares no `relationships.systems` entry, so Foundry offers it in
 every world. It reads and writes only its own settings, which is what makes that
 safe rather than merely permitted.
+
+### Why one code path covers both generations
+
+Support for v13 is a lowered floor, not a fork: there is no version branching in
+`scripts/`, and no shim layer. That is possible because every core API the module
+touches landed in v13 and is unchanged in v14. The full list, so this does not
+have to be re-derived the next time the floor moves:
+
+| Used by the module | Available since |
+|---|---|
+| `foundry.applications.api.ApplicationV2`, `HandlebarsApplicationMixin` | v12 |
+| `foundry.applications.api.DialogV2.confirm` (`window`, `content`, `modal`, `rejectClose`) | v12 |
+| `foundry.applications.handlebars.loadTemplates` / `renderTemplate` | v13 — this is the floor |
+| `getSceneControlButtons` with record-shaped `controls.tokens.tools` and `onChange` | v13 — this is the floor |
+| `ApplicationV2#bringToFront`, `#setPosition`, `#position`, `#rendered` | v13 (`bringToTop` was the v12 spelling, and is only ever called optionally) |
+| `game.settings.register` with `type`, `range`, `choices`, `onChange` | v9 |
+| `ChatMessage.create`, `ChatMessage.getWhisperRecipients` | v9 |
+| `foundry.utils.deepClone`, `mergeObject`, `randomID` | v10 |
+
+The stylesheet is self-contained: the only core custom properties it reads are
+`--font-primary` and `--z-index-app`, both with a literal fallback, so a
+generation that renamed either would degrade to the fallback rather than break.
+
+The two APIs marked *this is the floor* are what stops the module running on
+v12. Both are v13-and-later spellings of things that existed before under a
+global name, and the pre-v13 spellings are deliberately not carried — supporting
+v12 would mean a shim, and v12 is out of support.
 
 ## Design
 

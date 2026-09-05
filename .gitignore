@@ -9,9 +9,12 @@ Thumbs.db
 # Knowledge-graph tooling output, regenerated on demand
 graphify-out/
 
-# Build output
+# Build output — produced by .github/workflows/release.yml, never committed
 node_modules/
 module.zip
+module-v13.zip
+module-v13.json
+build/
 
 # Local preview, not part of the module
 hud-preview.html

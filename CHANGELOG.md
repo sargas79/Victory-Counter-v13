@@ -56,6 +56,33 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Foundry v13 is now supported.** The compatibility floor drops from 14 to 13,
+  so one build installs and runs on both generations. No code changed to make
+  this work and there is no version branching: every core API the module touches
+  landed in v13 and is unchanged in v14 — `ApplicationV2` and
+  `HandlebarsApplicationMixin`, `DialogV2.confirm`,
+  `foundry.applications.handlebars.loadTemplates`/`renderTemplate`, the
+  record-shaped `getSceneControlButtons` contract, `bringToFront`, and the
+  settings and chat APIs. The README's *Compatibility* section carries the full
+  audit, so the next person to move the floor does not have to re-derive it.
+
+  v12 is deliberately still excluded. The two APIs that set the floor —
+  `foundry.applications.handlebars.*` and record-shaped scene controls — are the
+  v13 spellings of things that were globals before, and carrying the older
+  spellings would mean a shim for a generation that is out of support.
+- **Two install tracks per release.** Publishing a release now attaches four
+  assets instead of two. `module.json` + `module.zip` are the main track
+  (minimum 13, verified 14) and install on either generation. `module-v13.json`
+  + `module-v13.zip` are a v13-pinned track that additionally declares
+  `maximum: 13`, for GMs who want a build Foundry will never offer as an update
+  to a v14 world.
+
+  The pinned compatibility is written into the v13 archive's own `module.json`
+  rather than only into the manifest asset, because Foundry keeps the manifest
+  it finds inside the archive: a pinned manifest pointing at the shared zip
+  would be silently replaced by the shared manifest on install. The v13 build
+  number the pinned track claims lives in one place, the `V13_VERIFIED`
+  workflow variable.
 - **Schema 4.** Purely additive over schema 3: every existing track gains
   `mode: "progress"`, which is exactly what it already was, and no stored value
   changes meaning. New fields are `mode`, `start`, `min`, `max`, `thresholds`,

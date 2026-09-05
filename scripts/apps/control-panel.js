@@ -2,7 +2,7 @@
  * The GM control panel: create tracks, configure name/target/polarity, and
  * adjust progress for each one. Never rendered for non-GM users.
  *
- * Layout notes (v14 ApplicationV2):
+ * Layout notes (ApplicationV2):
  * - The window is `resizable`, opens at a fixed size, and enforces a minimum
  *   through both CSS (`min-width`/`min-height`, which the browser honours over
  *   the inline width Foundry writes) and {@link VictoryCounterPanel#setPosition}.

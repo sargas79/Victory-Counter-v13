@@ -1,12 +1,30 @@
 name: Release Module
 
-# Publishes a Foundry-installable release when you publish a GitHub Release
-# whose tag looks like `v1.0.0`. The workflow rewrites version/manifest/download
-# in module.json so the published manifest always points at itself.
+# Publishes Foundry-installable releases when you publish a GitHub Release whose
+# tag looks like `v1.0.0`.
+#
+# Two install tracks come out of one tag:
+#
+#   module.json      + module.zip      — the main track. Declares
+#                                        minimum 13 / verified 14, so a single
+#                                        install works on Foundry v13 and v14.
+#   module-v13.json  + module-v13.zip  — the v13-pinned track, for GMs who want
+#                                        a build that will never offer them a
+#                                        v14-verified update.
+#
+# The pinned compatibility has to live inside `module-v13.zip` as its own
+# `module.json`, not only in the manifest asset: Foundry installs the manifest it
+# finds *in the archive*, so a v13 manifest pointing at the shared zip would be
+# overwritten by the shared manifest the moment it was installed.
 
 on:
   release:
     types: [published]
+
+env:
+  # Highest Foundry v13 build this module has been verified against. Bump this
+  # when a newer v13 stable is tested; nothing else needs to change.
+  V13_VERIFIED: "13.351"
 
 jobs:
   build:
@@ -35,13 +53,49 @@ jobs:
           mv module.tmp.json module.json
           cat module.json
 
+      - name: Derive the v13-pinned manifest
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          jq --arg verified "$V13_VERIFIED" \
+             --arg manifest "$REPO_URL/releases/latest/download/module-v13.json" \
+             --arg download "$REPO_URL/releases/download/${GITHUB_REF_NAME}/module-v13.zip" \
+             '.compatibility.minimum = "13"
+              | .compatibility.verified = $verified
+              | .compatibility.maximum = "13"
+              | .manifest = $manifest
+              | .download = $download' \
+             module.json > module-v13.json
+          cat module-v13.json
+
       - name: Validate JSON assets
         run: |
           jq empty module.json
+          jq empty module-v13.json
           jq empty lang/en.json
+          # The two manifests must stay the same package, differing only in the
+          # three fields the derivation step is allowed to touch. Comparing the
+          # whole document with those deleted is what makes that a real guard:
+          # checking id and version alone would let a future edit to esmodules,
+          # styles, languages or relationships reach one track and not the other.
+          allowed_to_differ='del(.compatibility, .manifest, .download)'
+          diff <(jq -S "$allowed_to_differ" module.json) <(jq -S "$allowed_to_differ" module-v13.json)
+          # And the pinned track must actually be pinned.
+          test "$(jq -r .compatibility.minimum module-v13.json)" = "13"
+          test "$(jq -r .compatibility.maximum module-v13.json)" = "13"
+          test "$(jq -r .compatibility.verified module-v13.json)" = "$V13_VERIFIED"
 
       - name: Create module.zip
         run: zip -r module.zip module.json CHANGELOG.md LICENSE README.md lang scripts styles templates
+
+      - name: Create module-v13.zip
+        run: |
+          mkdir -p build/v13
+          cp -r CHANGELOG.md LICENSE README.md lang scripts styles templates build/v13/
+          # The pinned manifest ships as the archive's module.json — that is the
+          # copy Foundry keeps once the module is installed.
+          cp module-v13.json build/v13/module.json
+          (cd build/v13 && zip -r ../../module-v13.zip module.json CHANGELOG.md LICENSE README.md lang scripts styles templates)
 
       - name: Attach artifacts to the release
         uses: softprops/action-gh-release@v2
@@ -49,3 +103,5 @@ jobs:
           files: |
             module.zip
             module.json
+            module-v13.zip
+            module-v13.json
