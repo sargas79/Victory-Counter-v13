@@ -88,7 +88,7 @@ jobs:
           # The pinned manifest ships as the archive's module.json — that is the
           # copy Foundry keeps once the module is installed.
           cp module-v13.json build/v13/module.json
-          (cd build/v13 && zip -r ../../module-v13.zip \n             module.json CHANGELOG.md LICENSE README.md lang scripts styles templates)
+          (cd build/v13 && zip -r ../../module-v13.zip module.json CHANGELOG.md LICENSE README.md lang scripts styles templates)
 
       - name: Attach artifacts to the release
         uses: softprops/action-gh-release@v2
