@@ -38,6 +38,7 @@ import {
   undo
 } from "../state.js";
 import { trackCardBase } from "../track-view.js";
+import { buildRuneView, drawsCircle } from "../rune-view.js";
 import { buildStepView } from "../step-view.js";
 import { buildThresholdView } from "../threshold-view.js";
 
@@ -92,12 +93,12 @@ export class VictoryCounterOverlay extends HandlebarsApplicationMixin(Applicatio
       // their own band either way, and the rest of the ladder only when the GM
       // has revealed it.
       if (isThresholdTrack(track)) {
-        return {
+        return this.#withCircle(track, {
           ...base,
           ...buildThresholdView(track, {
             showLadder: isGM || track.revealLadder === true
           })
-        };
+        }, isGM || track.revealLadder === true);
       }
 
       // A step track keeps the progress readout — it still counts to a target —
@@ -106,15 +107,19 @@ export class VictoryCounterOverlay extends HandlebarsApplicationMixin(Applicatio
       // are named for everyone, because the card has to be able to say what just
       // happened.
       if (isStepTrack(track)) {
-        return {
+        return this.#withCircle(track, {
           ...base,
           ...buildStepView(track, {
             revealAll: isGM || track.revealSteps === true
           })
-        };
+        }, isGM || track.revealSteps === true);
       }
 
-      return { ...base, threshold: false, stepped: false };
+      // A plain progress track has no reveal flag of its own, so only the GM
+      // reads the names of seats the party has not earned. The names are the
+      // GM's own wording — a seat can be called "The Hollow King Wakes" — and
+      // there is no setting here for them to say otherwise.
+      return this.#withCircle(track, { ...base, threshold: false, stepped: false }, isGM);
     });
 
     return {
@@ -125,6 +130,28 @@ export class VictoryCounterOverlay extends HandlebarsApplicationMixin(Applicatio
       ring: RING,
       canUndo: hasUndo()
     };
+  }
+
+  /**
+   * Add the rune circle to a card context, when this track is drawn as one.
+   *
+   * Spread *over* the mode's own view rather than instead of it: the circle
+   * replaces the ladder, the strip or the ring, but a threshold track drawn as
+   * a circle still has a band badge and a description to show, and a step track
+   * still has the name of the step it is standing on. Which of the two the card
+   * draws is the template's `{{#if circle}}`, not a third branch here.
+   *
+   * A track whose seat count the circle cannot hold comes back untouched, so it
+   * renders exactly as it did before the GM asked for a circle.
+   *
+   * @param {object}  track    The sanitized track.
+   * @param {object}  context  The card context built so far.
+   * @param {boolean} revealAll Whether unearned seats may be named for this user.
+   * @returns {object}
+   */
+  #withCircle(track, context, revealAll) {
+    if (!drawsCircle(track)) return context;
+    return { ...context, ...buildRuneView(track, { revealAll }) };
   }
 
   /**

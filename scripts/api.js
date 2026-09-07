@@ -8,6 +8,7 @@
 
 import {
   MODULE_ID,
+  TRACK_DISPLAYS,
   TRACK_MODES,
   TRACK_TYPES,
   logError,
@@ -26,6 +27,8 @@ import {
   removeTrack,
   resetTrackProgress,
   setTrackCurrent,
+  setTrackDisplay,
+  setTrackRunes,
   setTrackSteps,
   setTrackThresholds,
   setTrackType,
@@ -99,6 +102,8 @@ function deprecate(oldName, newName) {
  * @property {(id: string, steps: object[]) => Promise<object|null>} setSteps
  * @property {(id: string) => object|null}                           getStep
  * @property {(id: string) => Promise<object|null>}                  toggleStepAnnounce
+ * @property {(id: string, display: string) => Promise<object|null>} setDisplay
+ * @property {(id: string, runes: object[]) => Promise<object|null>} setRunes
  * @property {(id: string, direction: -1|1) => Promise<object[]|null>} move
  * @property {() => Promise<object[]|null>}                          undo
  * @property {() => boolean}                                         canUndo
@@ -114,6 +119,9 @@ export const api = {
 
   /** Track modes, for the same reason. */
   MODES: { ...TRACK_MODES },
+
+  /** Track displays, for the same reason. */
+  DISPLAYS: { ...TRACK_DISPLAYS },
 
   /** All tracks (sanitized copies), in display order. */
   getTracks: () => getTracks(),
@@ -232,6 +240,49 @@ export const api = {
 
   /** Flip whether a step track announces reaching a named step in chat. */
   toggleStepAnnounce: (id) => toggleStepAnnounce(id),
+
+  /* ------------------------------------------ */
+  /*  Drawing                                   */
+  /* ------------------------------------------ */
+
+  /**
+   * Choose how a track is drawn: `"standard"` or `"circle"`.
+   *
+   * A display decision only. It never changes what the track counts, what it is
+   * bounded by, or when it completes — which is why it is safe to set on a
+   * track of any mode, mid-session, without touching its progress.
+   *
+   * A track asking for `"circle"` whose position count the circle cannot hold
+   * (fewer than 1, or more than 24) keeps the standard readout until the count
+   * fits. Nothing is lost in the meantime: the choice is stored, and the circle
+   * appears as soon as the target or the ladder brings the count into range.
+   *
+   * @param {string} id
+   * @param {"standard"|"circle"} display
+   */
+  setDisplay: (id, display) => setTrackDisplay(id, display),
+
+  /**
+   * Replace a track's per-seat rune overrides.
+   *
+   * Entries are `{key, glyph, label}`, where `key` names the seat: a threshold
+   * rung's id on a threshold track, the seat's ordinal index as a string ("0",
+   * "1", ...) on any other. Either string may be left empty to keep that half of
+   * the seat's default, and an entry with neither is not an override at all and
+   * is dropped.
+   *
+   * Deliberately keyed rather than positional, and the two key shapes follow
+   * from that: a rung carries its identity with it when the GM inserts another
+   * one above it, and a step of a target does not have one to carry.
+   *
+   * Overrides for seats the track does not currently have are kept, not pruned —
+   * putting the rung back restores the wording with it. Writing the list never
+   * posts a chat card, for the same reason writing a ladder does not.
+   *
+   * @param {string} id
+   * @param {object[]} runes
+   */
+  setRunes: (id, runes) => setTrackRunes(id, runes),
 
   /* ------------------------------------------ */
 

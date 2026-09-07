@@ -18,16 +18,23 @@
  * nothing about the numbers above it, which is what keeps it distinct from a
  * band.
  *
+ * How a track is *drawn* is a separate field, `display`, and separate on
+ * purpose: no write path in this module branches on it. That is the invariant
+ * that makes the rune circle safe to offer on every mode at once — a track
+ * counts identically whichever way it is being shown.
+ *
  * @module victory-counter/state
  */
 
 import {
+  CIRCLE,
   DEFAULT_TRACK,
   LIMITS,
   MODULE_ID,
   SCHEMA_VERSION,
   SETTINGS,
   STATUS,
+  TRACK_DISPLAYS,
   TRACK_MODES,
   TRACK_TYPES,
   bandTone,
@@ -62,12 +69,24 @@ import { bandDisplayName } from "./threshold-view.js";
  */
 
 /**
+ * @typedef {object} Rune
+ * @property {string} key   The seat this override belongs to: a rung id on a
+ *                          threshold track, the ordinal index as a string on any
+ *                          other. Never a position on a threshold track — see
+ *                          `DEFAULT_TRACK.runes`.
+ * @property {string} glyph Replacement stave, or "" to keep the seat's default.
+ * @property {string} label Replacement name, or "" to keep the seat's default.
+ */
+
+/**
  * @typedef {object} Track
  * @property {number}  schema             Persisted schema version.
  * @property {string}  id                 Stable identifier for this track.
  * @property {boolean} active             Whether the track is currently running.
  * @property {string}  title              GM-supplied track name.
  * @property {string}  mode               One of TRACK_MODES: "progress" | "threshold" | "steps".
+ * @property {string}  display            One of TRACK_DISPLAYS: "standard" | "circle".
+ * @property {Rune[]}  runes              Per-seat glyph/name overrides for the circle.
  * @property {string}  type               One of TRACK_TYPES: "positive" | "negative".
  * @property {number}  current            Current value. Never negative in progress mode.
  * @property {number}  target             Progress needed to complete. Progress mode only.
@@ -189,6 +208,65 @@ export function sanitizeSteps(raw) {
 }
 
 /**
+ * Coerce arbitrary stored data into a valid {@link Rune} override.
+ *
+ * Deliberately not built on {@link sanitizeThreshold}: a rune override is not a
+ * rung. It has no value, no announcement and no id of its own — it is filed
+ * under the key of a seat that already exists, and carries only the two strings
+ * that replace what that seat would otherwise show.
+ *
+ * @param {any} raw
+ * @returns {Rune}
+ */
+export function sanitizeRune(raw) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return {
+    key: String(source.key ?? "").trim(),
+    // Trimmed for the same reason a band label is: a glyph of spaces would be
+    // truthy at every `glyph ||` that chooses the default stave, so the seat
+    // would render blank instead of falling back.
+    glyph: String(source.glyph ?? "").trim().slice(0, LIMITS.MAX_RUNE_GLYPH),
+    label: String(source.label ?? "").trim().slice(0, LIMITS.MAX_RUNE_LABEL)
+  };
+}
+
+/**
+ * Sanitize a raw list of rune overrides: drop the ones that say nothing, drop
+ * duplicates, and stop at the cap.
+ *
+ * An entry with no key names no seat, and one with neither a glyph nor a label
+ * replaces nothing — both are indistinguishable from not being stored at all, so
+ * keeping them would mean the panel's "N seat(s) customized" counted rows the
+ * circle does not draw. Two entries on one key are dropped to one for the same
+ * reason two rungs on one value are: only one of them could win, and which one
+ * would then depend on array order. The first one written wins.
+ *
+ * Deliberately *not* sorted, and deliberately not checked against the track's
+ * current seats: the list is a lookup keyed by seat, so its order is never read,
+ * and an override whose seat has gone is kept exactly as a step label past the
+ * target is kept — a GM who rewrites a ladder and puts a rung back should find
+ * the wording they wrote still attached to it.
+ *
+ * @param {any} raw
+ * @returns {Rune[]}
+ */
+export function sanitizeRunes(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const byKey = new Map();
+
+  for (const entry of list) {
+    if (byKey.size >= CIRCLE.MAX_POSITIONS) break;
+    const rune = sanitizeRune(entry);
+    if (!rune.key) continue;
+    if (!rune.glyph && !rune.label) continue;
+    if (byKey.has(rune.key)) continue;
+    byKey.set(rune.key, rune);
+  }
+
+  return [...byKey.values()];
+}
+
+/**
  * Coerce arbitrary stored data into a valid Track.
  * The record is migrated to the current shape first, then merged onto the
  * defaults with `insertKeys: false` so unknown keys are dropped and missing
@@ -225,6 +303,20 @@ export function sanitizeTrack(raw) {
   merged.mode = Object.values(TRACK_MODES).includes(merged.mode)
     ? merged.mode
     : TRACK_MODES.PROGRESS;
+
+  // Validated at every version rather than only when the field is new, exactly
+  // as `mode` and `type` are: a hand-edited record or one written by a macro
+  // must still land on a display the templates recognise, or the card would
+  // silently render none of its branches.
+  merged.display = Object.values(TRACK_DISPLAYS).includes(merged.display)
+    ? merged.display
+    : TRACK_DISPLAYS.STANDARD;
+
+  // Normalized under every display, not just the circle, for the same reason the
+  // ladder is normalized in every mode: a GM who tries the circle, goes back to
+  // the standard readout and returns should find the seats they named still
+  // named. Nothing else reads the list, so carrying it costs a few bytes.
+  merged.runes = sanitizeRunes(merged.runes);
 
   merged.target = clampInt(merged.target, LIMITS.MIN_TARGET, LIMITS.MAX_TARGET);
 
@@ -411,6 +503,22 @@ export function isThresholdTrack(track) {
  */
 export function isStepTrack(track) {
   return track?.mode === TRACK_MODES.STEPS;
+}
+
+/**
+ * Whether the GM has asked for this track to be drawn as a rune circle.
+ *
+ * A question about drawing, not about counting, and it sits beside the two mode
+ * predicates precisely so that stays visible: no write path below this line has
+ * a display branch, and none should ever gain one. Whether the circle can
+ * actually be drawn is a second question, answered by `drawsCircle` in
+ * `rune-view.js` — this one only reports what was asked for.
+ *
+ * @param {Track} track
+ * @returns {boolean}
+ */
+export function isCircleTrack(track) {
+  return track?.display === TRACK_DISPLAYS.CIRCLE;
 }
 
 /**
@@ -1014,6 +1122,70 @@ export async function toggleStepAnnounce(id) {
       )
     );
   }
+  return result ? result.find((t) => t.id === id) ?? null : null;
+}
+
+/**
+ * Change how a track is drawn, without touching what it counts.
+ *
+ * Routed through {@link updateTrackConfig} rather than given a mutator of its
+ * own, because that is all it is: one configuration field, applied with the same
+ * undo snapshot and the same notification as any other. An unknown display is
+ * refused here rather than quietly falling back, so a macro with a typo says so
+ * instead of appearing to work.
+ *
+ * @param {string} id
+ * @param {"standard"|"circle"} display
+ * @returns {Promise<Track|null>}
+ */
+export async function setTrackDisplay(id, display) {
+  if (!assertGM()) return null;
+  if (!Object.values(TRACK_DISPLAYS).includes(display)) {
+    logError(`Refusing to set unknown track display "${display}".`);
+    return null;
+  }
+  return updateTrackConfig(id, { display });
+}
+
+/**
+ * Replace a track's per-seat rune overrides.
+ *
+ * Posts no chat card, for the same reason rewriting a ladder or a label list
+ * does not: renaming a seat is not the same event as the track reaching it, and
+ * a GM tidying up wording mid-session should not fire anything at the table.
+ *
+ * @param {string} id
+ * @param {any[]} runes
+ * @returns {Promise<Track|null>}
+ */
+export async function setTrackRunes(id, runes) {
+  if (!assertGM()) return null;
+  const current = getTracks();
+  const track = current.find((t) => t.id === id);
+  if (!track) {
+    ui.notifications.warn(game.i18n.localize("PVC.Notify.NoTrack"));
+    return null;
+  }
+
+  const clean = sanitizeRunes(runes);
+  const requested = Array.isArray(runes) ? runes.length : 0;
+  if (requested > clean.length) {
+    // Same courtesy as the ladder and the label list: name the reasons a row can
+    // vanish rather than letting it look like the editor dropped it at random.
+    // A row left completely blank is the common one by far, and it is not a
+    // mistake — it is how a GM clears an override they no longer want.
+    ui.notifications.info(
+      game.i18n.format("PVC.Notify.RunesDropped", {
+        dropped: requested - clean.length
+      })
+    );
+  }
+
+  const result = await persistTracks(
+    current.map((t) => (t.id === id ? { ...t, runes: clean } : t)),
+    { reason: game.i18n.localize("PVC.Reason.RunesUpdated") }
+  );
+  if (result) ui.notifications.info(game.i18n.localize("PVC.Notify.RunesSaved"));
   return result ? result.find((t) => t.id === id) ?? null : null;
 }
 

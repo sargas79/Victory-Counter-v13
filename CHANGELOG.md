@@ -5,6 +5,70 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Rune circle.** A second way to *draw* a track, chosen per track and offered
+  on every mode. The track becomes a ring of seats — one per position — with a
+  rune adrift outside it for every seat not yet earned, sliding into place as the
+  party accumulates success.
+
+  This is a **display**, not a fourth mode, and the distinction is the point:
+  `mode` still decides how a track counts, and the new `display` field decides
+  only how the result is drawn. No read or write path branches on it, so every
+  combination of the two is valid and switching between them never touches a
+  value, a band, a label or a target.
+
+  What one seat means comes from the mode it is drawn for: one step of the target
+  on a progress or steps track, one rung of the ladder on a threshold track —
+  where the rune for the band currently in force is also drawn as the active one.
+- **Rune editor.** Its own window per track, reached from **Edit Runes** on the
+  control panel's track card, and a deliberate sibling of the ladder and step
+  editors: edits held in a local draft, written only on Save. What differs is
+  that a row is not something the GM created — the seats come from the track's
+  own target or ladder — so there is no Add and no Remove, and a row left blank
+  is a seat keeping its default, which is also how an override is cleared.
+
+  Overrides are keyed by seat rather than by position: a rung's own id on a
+  threshold track, the ordinal index elsewhere. Inserting a rung into the middle
+  of a ladder therefore moves a named seat along instead of handing its name to
+  a different rung, and an override for a deleted rung is kept rather than
+  discarded — it comes back if the rung does.
+- **Built-in glyphs.** Seats carry the 24 staves of the Elder Futhark in order,
+  so a circle is legible with nothing configured. They are drawn as text with an
+  explicit Runic font stack, so a browser without coverage shows a visible box
+  rather than nothing, and any seat can be overridden regardless.
+- **`api.setDisplay(id, display)` and `api.setRunes(id, runes)`**, plus
+  `api.DISPLAYS`. Neither touches what a track counts, and writing overrides
+  never posts a chat card, for the same reason writing a ladder does not.
+
+### Changed
+
+- **Track schema 5 → 6.** Purely additive, and unlike every previous bump it does
+  not touch counting at all: every track gains `display: "standard"` — the way it
+  was already drawn — and an empty `runes` list. A world that upgrades sees no
+  visible change.
+
+### Notes
+
+- **A circle needs between 1 and 24 positions.** A 60-step progress track, or a
+  threshold track with an empty ladder, falls back to the readout it already had
+  and the control panel says why. Clamping was rejected: it would break the
+  metaphor outright, because one rune would stop meaning one success. The choice
+  is stored either way, so fixing the target or the ladder brings the circle back
+  with its overrides intact.
+- **Compact mode is unchanged.** A collapsed chip has no room for a circle, so it
+  stays a bar.
+- **Chat cards are untouched.** A display is a viewing choice, and the cards
+  already describe the state correctly in words.
+- **Unearned seats stay unnamed for players**, on the module's existing terms: a
+  threshold circle follows **Show Players Every Threshold**, a steps circle
+  follows **Show Players Every Label**, and a plain progress circle has no such
+  switch, so its unearned names are GM-only. A seat the party has earned is
+  always named — its rune is on the plate for everyone to see.
+- **Motion is decoration.** Seated and adrift differ in brightness and angle as
+  well as position, so the OS "reduce motion" setting removes the slide without
+  costing the reader anything.
+
 ## [2.2.0] - 2026-09-07
 
 Note: the 2.1.x releases were published without changelog sections of their own.
