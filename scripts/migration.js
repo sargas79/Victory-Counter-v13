@@ -276,6 +276,18 @@ export function migrateTrackData(raw) {
   // never reads them. The `mode` guard above already accepts "steps", so a
   // record hand-written into the new mode also lands here intact.
 
+  // --- v5 -> v6 -----------------------------------------------------------
+  // Additive, and with nothing to reinterpret for a different reason from the
+  // one above: the drawing fields (`display`, `runes`) do not touch counting at
+  // all. Both are backfilled from DEFAULT_TRACK during sanitization, which lands
+  // every pre-6 track on `display: "standard"` — the way it was already drawn —
+  // with no override list, so a world that upgrades sees no visible change.
+  //
+  // There is no guard here to match the `mode` one above, because `display`
+  // cannot decide how a value is bounded: sanitization validates it, and a
+  // record carrying an unknown display falls back to the standard readout
+  // rather than to a different set of numbers.
+
   // Polarity: honour an explicitly stored value, otherwise default to positive.
   // Applied at every version so a hand-edited or partially written record still
   // lands on a valid polarity.

@@ -39,6 +39,12 @@ A track runs in one of two **modes**:
   belongs to its own step and says nothing about the ones above it — which is
   what makes it a milestone rather than a band. Reaching one can announce itself
   in chat, and can stay secret from players until the track arrives.
+- **Rune circle.** A second way to *draw* any track, chosen per track and
+  independent of its mode. One seat per position — one step of the target, or one
+  threshold of the ladder — arranged in a ring, with a rune adrift outside it for
+  every position not yet earned, sliding into its seat as the party accumulates
+  success. Seats carry the Elder Futhark by default and need no configuration;
+  the GM can replace any seat's rune or its name.
 - **Positive and negative tracks.** Positive is the default and keeps the
   module's accent colour. Negative tracks show their progress numbers and ring
   in red — plus an arrow icon and the written word *Negative*, so the
@@ -124,15 +130,20 @@ New-Item -ItemType SymbolicLink -Path "$env:LOCALAPPDATA\FoundryVTT\Data\modules
    - *Thresholds*: set **Start**, **Minimum** and **Maximum**.
    - *Steps*: set the **Target** — that is how many steps the track has — and the
      **Type**.
-3. Leave **Visible to Players** on so the party can see the track; turn it off
+3. Optionally pick a **Display**. *Standard* is the readout that mode already
+   has; *Rune Circle* draws the same track as a ring of runes (described below).
+   Display and mode are independent: every display works with every mode, and
+   changing one never changes the other.
+4. Leave **Visible to Players** on so the party can see the track; turn it off
    to run a hidden one.
-4. Click **Add Track**. Repeat for as many tracks as the scene needs.
-5. For a threshold track, click **Edit Thresholds** on its card and describe each
+5. Click **Add Track**. Repeat for as many tracks as the scene needs.
+6. For a threshold track, click **Edit Thresholds** on its card and describe each
    band; for a step track, click **Edit Step Labels** and name the steps that
-   matter (both are described below).
-6. During play, use `-` / `+` in the panel or directly on the HUD. To jump to a
+   matter; for a rune circle, click **Edit Runes** to replace any seat's rune or
+   name (all three are described below).
+7. During play, use `-` / `+` in the panel or directly on the HUD. To jump to a
    value, type it into the track's "set" field and press Enter.
-7. **Undo Last Change** reverts the most recent change. **Reset Progress**
+8. **Undo Last Change** reverts the most recent change. **Reset Progress**
    zeroes a progress or step track; on a threshold track the same button reads
    **Reset to Start** and returns it to its starting value. **End Track** removes
    it from every screen.
@@ -240,6 +251,59 @@ Step tracks are drawn as pips up to 20 steps. Past that the strip becomes a bar
 with a tick at each named step, which stays readable where forty slivers would
 not.
 
+#### The rune circle
+
+Everything above is about how a track *counts*. **Display** is about how it is
+*drawn*, and the two are independent — every display works with every mode, and
+switching between them never touches a value, a band, a label or a target.
+
+Set **Display** to *Rune Circle* and the track becomes a ring of seats with a
+rune adrift outside it for every seat not yet earned. Each `+1` slides one rune
+into place; each `-1` sends one back out. What a seat *is* comes from the mode:
+
+| Mode | One seat is | Seated when |
+| --- | --- | --- |
+| Progress | one step of the target | the track reaches that step |
+| Steps | the same — one step of the target | the same |
+| Thresholds | one rung of the ladder | the value reaches that rung |
+
+On a threshold track the rune for the band the value currently sits in is drawn
+as the active one, so the circle says which band is in force as well as how many
+have been passed.
+
+Seats are numbered from twelve o'clock and carry the 24 staves of the Elder
+Futhark in order, so a circle is legible with nothing configured. **Edit Runes**
+on the track card opens a window with one row per seat, where either the rune or
+the name — or both — can be replaced. Leave a row blank to keep that seat's
+default; clearing a row you filled in hands the seat back its default.
+
+Overrides are filed against the seat, not against its position. On a threshold
+track that means a rung's own id, so inserting a new rung in the middle of a
+ladder moves a named seat along rather than handing its name to a different rung.
+An override for a rung that is later deleted is kept, not discarded, and comes
+back if the rung does — the same courtesy a step label past the target gets.
+
+Two things a circle cannot do, and both fall back rather than fail:
+
+- **A track needs between 1 and 24 positions.** A 60-step progress track, or a
+  threshold track whose ladder is still empty, has no circle to draw: one rune
+  has to mean one success, and squeezing sixty into twenty-four would end that.
+  Those tracks keep the readout they already had, and the control panel says so
+  next to the display select. Fix the target or the ladder and the circle
+  appears; the choice was stored the whole time.
+- **Compact mode is unchanged.** A collapsed chip has no room for a circle, so
+  it stays a bar. Expand the HUD to see the runes.
+
+Unearned seats stay unnamed for players — a seat can be called *The Hollow King
+Wakes*, and that is the GM's to give away — on the same terms as the rest of the
+module: a threshold circle follows **Show Players Every Threshold**, a steps
+circle follows **Show Players Every Label**, and a plain progress circle has no
+such switch, so its unearned names are GM-only. A seat the party has earned is
+always named: its rune is on the plate for everyone to see.
+
+The circle is a rendering, so chat cards are untouched — they already describe
+the state in words, and words do not have a shape.
+
 ### Players
 
 - The HUD appears automatically when the GM starts a visible track.
@@ -335,6 +399,28 @@ await vc.toggleStepAnnounce(vault.id);
 working as intended, not an error. Labels are sorted, deduplicated by step and
 capped at 10 on the way in, and writing them never posts a chat card.
 
+How a track is *drawn* is a separate pair of calls, usable on a track of any
+mode:
+
+```js
+await vc.setDisplay(vault.id, vc.DISPLAYS.CIRCLE);   // draw it as a rune circle
+await vc.setDisplay(vault.id, vc.DISPLAYS.STANDARD); // and back
+
+// Seats are keyed: the ordinal index as a string here, a rung's own id on a
+// threshold track. Either string may be left out to keep that half of the
+// seat's default.
+await vc.setRunes(vault.id, [
+  { key: "2", glyph: "ᛥ", label: "The Inner Gate" },
+  { key: "5", label: "Daylight" }
+]);
+```
+
+`setDisplay()` never touches a value, a band, a label or a target — that is the
+whole point of the field. A track asking for a circle whose position count is
+outside 1–24 keeps its standard readout until the count fits; nothing is lost in
+the meantime. Overrides for seats the track does not currently have are kept
+rather than pruned, and writing them never posts a chat card.
+
 All mutating calls are GM-only and fail with a notification for other users.
 
 `addSuccess()` and `setCounts()` still work as deprecated aliases for
@@ -347,11 +433,13 @@ One world setting (`tracks`) holds an array of:
 
 ```json
 {
-  "schema": 5,
+  "schema": 6,
   "id": "unique-track-id",
   "active": true,
   "title": "Raise the Alarm",
   "mode": "progress",
+  "display": "standard",
+  "runes": [],
   "type": "negative",
   "current": 2,
   "target": 5,
@@ -390,6 +478,17 @@ same rules, and capped at 10 rather than 12, but `value` means something
 different: a rung's value is where a band *begins*, while a label's value is the
 one step it names.
 
+`display` decides how the track is *drawn* and is orthogonal to `mode`: no read
+or write path in the module branches on it, so every combination of the two is
+valid and changing one never changes the other. Each entry in `runes` is
+`{ "key": "...", "glyph": "ᚦ", "label": "The Gate" }`, where `key` names a seat
+of the circle — a threshold rung's `id` on a threshold track, the seat's ordinal
+index as a string (`"0"`, `"1"`, …) on any other. Keying threshold seats by rung
+id is what stops an override reassigning itself when a rung is inserted into the
+middle of a ladder. An entry with no key, or with neither a glyph nor a label,
+is not an override and is dropped; the list is a lookup, so it is never sorted,
+and entries for seats the track no longer has are kept rather than pruned.
+
 Three fields are derived and never authored:
 
 - `status` — `complete` when a progress or steps track has `current >= target`,
@@ -405,9 +504,12 @@ Three fields are derived and never authored:
 `legacy` holds the pre-schema-3 failure fields of a migrated track, and is never
 read at runtime.
 
-Upgrading from schema 4 is purely additive: every track gains an empty `steps`
-list and the three fields that go with it, none of which the two existing modes
-read. Upgrading from schema 3 is additive in the same way: every track gains
+Upgrading from schema 5 is purely additive and does not touch counting at all:
+every track gains `display: "standard"` — the way it was already drawn — and an
+empty `runes` list, so a world that upgrades sees no visible change.
+Upgrading from schema 4 is additive in the same way: every track gains an empty
+`steps` list and the three fields that go with it, none of which the two existing
+modes read. Upgrading from schema 3 is additive in the same way: every track gains
 `mode: "progress"`, which is exactly what it already was, and no stored value
 changes meaning.
 Upgrading from schema 2 migrates `successes → current` and
@@ -469,12 +571,17 @@ resolved. Run it once per v13 world before trusting the rest of the plan.
    required-successes as the target, all marked *Positive*, with no console
    errors.
 5. Enable **Debug Logging** and reload. The console prints one migration summary
-   line; a second reload prints "already at schema 4 — nothing to do."
+   line; a second reload prints "already at schema 6 — nothing to do."
 6. Hand-edit a track's stored data to remove `target`, or set it to `null`. It
    reloads with a safe default instead of throwing.
 6a. With schema 3 data present, load the world as GM. Every track appears exactly
     as before, now in **Progress** mode, with its value, target and polarity
     unchanged and no console errors.
+6b. With schema 5 data present, load the world as GM. Every track appears drawn
+    exactly as it was, now with `display: "standard"` and an empty `runes` list,
+    and the stored schema version stamps to 6. Hand-edit one track's `display` to
+    a value that is not `standard` or `circle`: it reloads with the standard
+    readout rather than a blank card.
 
 **Progress rules**
 
@@ -588,23 +695,69 @@ resolved. Run it once per v13 world before trusting the rest of the plan.
 48. Switch a step track to **Thresholds** mode and back. The labels are still
     there, and no chat card was posted for either switch.
 
+**Rune circle**
+
+49. Create a progress track with Target 8 and set **Display** to *Rune Circle*.
+    Eight staves hang outside the ring, none seated, and the figure reads `0 / 8`.
+50. Press `+` eight times. One rune slides into its seat on each press, the most
+    recently seated one is ringed, and at 8 the track reads **Complete** and the
+    orbit closes to a solid line. Press `-`: the last rune drifts back out and
+    the track reads **In Progress** again.
+51. With **Allow Progress Beyond Target** on, push the value past 8. All eight
+    runes stay seated, exactly one stays ringed, and the figure shows the true
+    value: the circle is full and the number is still honest.
+52. Create a threshold track with the 0/3/6/9/12 ladder above and set its display
+    to *Rune Circle*. Five runes appear. At value 6, three are seated and the
+    third is drawn as the active one; the band badge and its description are
+    still on the card.
+53. Open **Edit Runes** on that track, give seat 3 a different rune and a name,
+    and save. The circle shows both. Reload the world: they are still there.
+    Reopen the editor, press the reset arrow on that row and save: the seat is
+    back to its default stave and name.
+54. Reopen **Edit Thresholds** and insert a new rung in the middle of the ladder,
+    then look at the circle. The seat you named has moved one position along and
+    kept its name; the new rung has its own default. Delete the rung you named:
+    the editor reports that one customized seat belongs to a position the track
+    no longer has, and putting the rung back restores the name with it.
+55. Open the rune editor, type into a row and press Cancel (close the window).
+    Nothing changed. Do it again and press Save: only what you typed changed.
+56. Set the Target of a circle track to 60. The card falls back to the standard
+    readout, and the panel explains that the circle needs between 1 and 24
+    positions. Set it back to 8: the circle returns, with the overrides intact.
+    Repeat with a threshold track whose ladder is empty.
+57. Open the same circle track in the HUD and in the control panel side by side.
+    Both draw it identically. Set the HUD scale to 0.6 and to 1.6, and drag the
+    HUD to its minimum width: the runes stay inside the plate and legible at all
+    three.
+58. As a player, look at a visible circle track. Seats the party has earned are
+    named on hover; unearned ones read *Not yet earned*. On a threshold circle,
+    turn **Show Players Every Threshold** on: the unearned names appear.
+59. Turn on the OS "reduce motion" setting and adjust the track. Runes jump
+    between adrift and seated with no slide, and both states are still plainly
+    distinguishable.
+60. Collapse the HUD. The circle track's chip is a bar, not a circle, and shows
+    the same value it did before.
+61. Switch a circle track back to *Standard* and forward again. The overrides
+    survive both switches, no chat card is posted for either, and the value never
+    changes.
+
 **Terminology**
 
-49. Search the HUD, panel, dialogs, chat cards and settings for the word
+62. Search the HUD, panel, dialogs, chat cards and settings for the word
     "successes". It should not appear.
 
 **Permissions and sync**
 
-50. As a player, try the API: `game.modules.get("victory-counter").api
+63. As a player, try the API: `game.modules.get("victory-counter").api
     .increase(id)`. It is refused with a GM-only notification.
-51. With a GM and a player connected, change a track on the GM screen. The
+64. With a GM and a player connected, change a track on the GM screen. The
     player's HUD updates immediately without a reload.
-52. Hide a track from players. It disappears from the player HUD, and its chat
+65. Hide a track from players. It disappears from the player HUD, and its chat
     cards are whispered — including band-change cards.
 
 **Systems**
 
-53. Load the same world under a different game system (or a second world running
+66. Load the same world under a different game system (or a second world running
     one). The HUD, panel, chat cards and settings all behave identically and the
     console stays clean.
 

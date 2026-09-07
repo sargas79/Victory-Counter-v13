@@ -1,0 +1,44 @@
+{{!--
+  The rune circle, shared by the HUD and the GM control panel the way
+  `progress-ring.hbs` and `threshold-ladder.hbs` are.
+
+  Expects a circle-shaped context: `runes`, `seatCount`, `seatedCount`,
+  `seatRadius`, `circleLabel`, plus `negative` and `complete` from the shared
+  card base.
+
+  A seat is one position: one step of the target on a progress or steps track,
+  one rung on a threshold ladder. A rune sits in its seat once that position is
+  earned and hangs outside the ring until then. Both coordinates come from
+  `runeSeats()` in JS, so this template does no arithmetic and CSS is free to
+  transition between the two states.
+
+  The runes are HTML spans over an SVG backdrop rather than SVG text, which is
+  what keeps `data-tooltip`, focus and text scaling working on them — the same
+  reason `threshold-ladder.hbs` places its ticks with `style="left: ...%"`.
+
+  Seating is never carried by position alone: a seated rune is also brighter and
+  upright, the active one is ringed, and every rune the reader is allowed to name
+  carries that name in its tooltip. The plate is aria-hidden down to the glyphs
+  and the wrapper carries the whole accessible name, so a screen reader announces
+  "Bind the Wardstone, 3 of 8 runes seated" rather than a row of loose staves.
+
+  Polarity is gated on mode for the same reason the card around it gates it:
+  `type` survives a switch to threshold mode, so a track that used to be a
+  Negative progress track would otherwise keep painting its runes red while the
+  band beside them says otherwise.
+--}}
+<div class="pvc-runes{{#unless threshold}}{{#if negative}} pvc-runes-negative{{/if}}{{/unless}}{{#if complete}} pvc-runes-complete{{/if}}"
+     role="img" aria-label="{{circleLabel}}"
+     data-seated="{{seatedCount}}" data-seats="{{seatCount}}">
+
+  <svg class="pvc-runes-plate" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+    {{!-- The seat ring itself, so an empty circle still reads as a circle. --}}
+    <circle class="pvc-runes-orbit" cx="50" cy="50" r="{{seatRadius}}"/>
+  </svg>
+
+  {{#each runes}}
+  <span class="pvc-rune{{#if seated}} pvc-rune-seated{{else}} pvc-rune-adrift{{/if}}{{#if active}} pvc-rune-active{{/if}}"
+        style="left: {{left}}%; top: {{top}}%; --pvc-rune-turn: {{rotation}}deg"
+        data-tooltip="{{tooltip}}" aria-hidden="true">{{glyph}}</span>
+  {{/each}}
+</div>

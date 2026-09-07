@@ -175,7 +175,16 @@
       <span class="pvc-kicker pvc-tone-{{tone}}">{{bandLabel}}</span>
     </div>
 
+    {{!-- The circle wins over the ladder when the GM has asked for it: both
+          answer "where on the scale is this", and drawing them together would
+          be two answers to one question. The band badge and description above
+          and below stay either way — they say what the position *means*, which
+          neither drawing does. --}}
+    {{#if circle}}
+    {{> "modules/victory-counter/templates/rune-circle.hbs"}}
+    {{else}}
     {{> "modules/victory-counter/templates/threshold-ladder.hbs"}}
+    {{/if}}
 
     {{#if bandDescription}}
     <p class="pvc-band-description">{{bandDescription}}</p>
@@ -210,7 +219,23 @@
       {{/if}}
     </div>
 
-    {{#if stepped}}
+    {{#if circle}}
+    {{!-- ===== Rune circle readout ===== --}}
+    {{!-- Tested before the strip and before the world's ring setting: the
+          circle is a per-track choice the GM made, and both of those are what
+          it was chosen instead of. The figure stays, because the plate cannot
+          show a value that has overshot the last seat and the number can. --}}
+    <div class="pvc-readout" aria-label="{{progressLabel}}">
+      <div class="pvc-figure">
+        <span class="pvc-figure-value">{{current}}</span>
+        <span class="pvc-figure-target">/ {{target}}</span>
+      </div>
+      <span class="pvc-kicker">{{#if stepLabel}}{{stepLabel}}{{else}}{{percent}}%{{/if}}</span>
+    </div>
+
+    {{> "modules/victory-counter/templates/rune-circle.hbs"}}
+
+    {{else if stepped}}
     {{!-- ===== Step readout ===== --}}
     {{!-- Rings are skipped here for the same reason they are skipped on a
           threshold track: the strip below *is* the readout, and a ring beside
@@ -224,10 +249,6 @@
     </div>
 
     {{> "modules/victory-counter/templates/step-track.hbs"}}
-
-    {{#if stepDescription}}
-    <p class="pvc-band-description">{{stepDescription}}</p>
-    {{/if}}
 
     {{else if ../rings}}
     {{!-- ===== Ring readout ===== --}}
@@ -247,6 +268,14 @@
     <div class="pvc-track">
       <div class="pvc-track-fill" style="width: {{percent}}%"></div>
     </div>
+    {{/if}}
+
+    {{!-- Outside the readout chain because it belongs to the *track*, not to a
+          drawing of it: a step track says what step it is standing on whether
+          that strip is drawn as pips or as a circle. Empty on every other mode,
+          so the guard is the whole condition. --}}
+    {{#if stepDescription}}
+    <p class="pvc-band-description">{{stepDescription}}</p>
     {{/if}}
 
     {{/if}}

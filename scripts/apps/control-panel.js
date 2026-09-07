@@ -15,9 +15,11 @@
  */
 
 import {
+  CIRCLE,
   LIMITS,
   MODULE_ID,
   RING,
+  TRACK_DISPLAYS,
   TRACK_MODES,
   TRACK_TYPES,
   clampInt
@@ -27,6 +29,7 @@ import {
   createTrack,
   getTracks,
   hasUndo,
+  isCircleTrack,
   isStepTrack,
   isThresholdTrack,
   moveTrack,
@@ -41,6 +44,7 @@ import {
   updateTrackConfig
 } from "../state.js";
 import { trackCardBase } from "../track-view.js";
+import { buildRuneView, circleFits, drawsCircle, runeSeatCount } from "../rune-view.js";
 import { buildStepView } from "../step-view.js";
 import { buildThresholdView } from "../threshold-view.js";
 import { clampToMinimum, refitToViewport } from "./window-fit.js";
@@ -86,6 +90,7 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       toggleStepAnnounce: this.onToggleStepAnnounce,
       editThresholds: this.onEditThresholds,
       editSteps: this.onEditSteps,
+      editRunes: this.onEditRunes,
       moveTrack: this.onMove,
       undoChange: this.onUndo
     }
@@ -105,6 +110,8 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       const threshold = isThresholdTrack(track);
       const stepped = isStepTrack(track);
 
+      const seats = runeSeatCount(track);
+
       const base = {
         ...trackCardBase(track),
         announcing: track.postToChat !== false,
@@ -115,15 +122,32 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
         // Shown on every mode too, for the same reason: a GM who switched a step
         // track to another mode can still see that labels are waiting for it.
         stepCount: track.steps.length,
-        announcingSteps: track.announceSteps !== false
+        announcingSteps: track.announceSteps !== false,
+        // Shown under every display, for the third instance of that reason: a GM
+        // who switched a track back to the standard readout can still see that
+        // seat names are waiting for it.
+        runeCount: track.runes.length,
+        seatCount: seats,
+        // The circle was asked for and cannot be drawn. Surfaced rather than
+        // silently ignored: the card would otherwise look as though the display
+        // select had not taken, and the number the GM has to change to fix it
+        // (the target, or the size of the ladder) is not the one they touched.
+        circleUnavailable: isCircleTrack(track) && !circleFits(seats),
+        maxPositions: CIRCLE.MAX_POSITIONS
       };
 
-      // The GM always sees the whole ladder and every label; revealLadder and
-      // revealSteps only govern what players are shown.
-      if (threshold) return { ...base, ...buildThresholdView(track, { showLadder: true }) };
-      if (stepped) return { ...base, ...buildStepView(track, { revealAll: true }) };
+      // The GM always sees the whole ladder, every label and every seat name;
+      // revealLadder and revealSteps only govern what players are shown.
+      let view = { ...base, threshold: false, stepped: false };
+      if (threshold) view = { ...base, ...buildThresholdView(track, { showLadder: true }) };
+      else if (stepped) view = { ...base, ...buildStepView(track, { revealAll: true }) };
 
-      return { ...base, threshold: false, stepped: false };
+      // Layered over whatever the mode produced, exactly as in the HUD, so the
+      // two windows cannot disagree about what a circle looks like.
+      if (drawsCircle(track)) {
+        view = { ...view, ...buildRuneView(track, { revealAll: true }) };
+      }
+      return view;
     });
 
     return {
@@ -155,6 +179,16 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
           label: game.i18n.localize("PVC.Mode.Steps")
         }
       ],
+      displays: [
+        {
+          value: TRACK_DISPLAYS.STANDARD,
+          label: game.i18n.localize("PVC.Display.Standard")
+        },
+        {
+          value: TRACK_DISPLAYS.CIRCLE,
+          label: game.i18n.localize("PVC.Display.Circle")
+        }
+      ],
       types: [
         {
           value: TRACK_TYPES.POSITIVE,
@@ -169,19 +203,29 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
   }
 
   /**
-   * The mode/bound fields shared by the "add track" form and each track card.
+   * The mode/display/bound fields shared by the "add track" form and each track
+   * card.
+   *
+   * `display` is read here rather than in the two callers for the reason this
+   * helper exists at all: both forms carry the select, and reading it in one
+   * place is what stops the add-track fieldset and the track cards drifting
+   * apart over which fields they honour.
    *
    * `min` and `max` are read before `start` but not clamped against each other
    * here: sanitization owns that ordering, and doing it twice would let the two
    * disagree about which field wins.
    *
    * @param {(name: string) => HTMLElement|null} field Field lookup for this form.
-   * @returns {{mode: string, start: number, min: number, max: number}}
+   * @returns {{mode: string, display: string, start: number, min: number, max: number}}
    */
   static readModeFields(field) {
     const mode = field("mode")?.value;
+    const display = field("display")?.value;
     return {
       mode: Object.values(TRACK_MODES).includes(mode) ? mode : TRACK_MODES.PROGRESS,
+      display: Object.values(TRACK_DISPLAYS).includes(display)
+        ? display
+        : TRACK_DISPLAYS.STANDARD,
       start: clampInt(field("start")?.value, LIMITS.MIN_VALUE, LIMITS.MAX_VALUE),
       min: clampInt(field("min")?.value, LIMITS.MIN_VALUE, LIMITS.MAX_VALUE),
       max: clampInt(field("max")?.value, LIMITS.MIN_VALUE, LIMITS.MAX_VALUE)
@@ -279,6 +323,19 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       if (!scope) continue;
       select.addEventListener("change", () => {
         scope.dataset.mode = select.value;
+      });
+    }
+
+    // The display select works the same way and writes to the same scope, so
+    // choosing the rune circle reveals its "Edit Runes" summary at once rather
+    // than only after Apply. Mode and display are independent, which is exactly
+    // why they are separate attributes on one element rather than one combined
+    // state: a threshold track drawn as a circle has to show both sets.
+    for (const select of root.querySelectorAll("[data-display-select]")) {
+      const scope = select.closest("[data-mode-scope]");
+      if (!scope) continue;
+      select.addEventListener("change", () => {
+        scope.dataset.display = select.value;
       });
     }
   }
@@ -467,6 +524,26 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       await StepEditor.open(id);
     } catch (err) {
       console.error(`[${MODULE_ID}] The step label editor could not be loaded.`, err);
+      ui.notifications.error(game.i18n.localize("PVC.Notify.UILoadFailed"));
+    }
+  }
+
+  /**
+   * Open the rune editor for this track. Imported on demand for the same reason
+   * the other two editors are: an editor that fails to parse must cost the GM
+   * that editor, not the whole control panel.
+   *
+   * @this {VictoryCounterPanel}
+   * @param {PointerEvent} event
+   * @param {HTMLElement}  target
+   */
+  static async onEditRunes(event, target) {
+    const id = target.dataset.id;
+    try {
+      const { RuneEditor } = await import("./rune-editor.js");
+      await RuneEditor.open(id);
+    } catch (err) {
+      console.error(`[${MODULE_ID}] The rune editor could not be loaded.`, err);
       ui.notifications.error(game.i18n.localize("PVC.Notify.UILoadFailed"));
     }
   }

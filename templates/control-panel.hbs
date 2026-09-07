@@ -13,12 +13,17 @@
       fields it governs — `#bindModeSwitches` finds it with `closest()`, which
       only walks ancestors.
 
+      `data-display` works identically, on the same scope element, for the
+      fields that belong to how a track is *drawn*. Two attributes rather than
+      one because the two are independent: every display is available in every
+      mode, and a threshold track drawn as a rune circle shows both sets.
+
       Hidden fields stay in the DOM on purpose: the form readers still find
       them, so switching mode twice never loses what was typed in between. --}}
 
 <div class="pvc-panel-body">
 
-<fieldset class="pvc-panel-config" data-mode-scope data-mode="progress">
+<fieldset class="pvc-panel-config" data-mode-scope data-mode="progress" data-display="standard">
   <legend>{{localize "PVC.Panel.AddTrackLegend"}}</legend>
 
   {{#if atMax}}
@@ -47,9 +52,26 @@
         </select>
       </div>
     </div>
+
+    <div class="form-group pvc-field-narrow">
+      <label for="pvc-new-display">{{localize "PVC.Panel.Display"}}</label>
+      <div class="form-fields">
+        <select id="pvc-new-display" name="new-display" data-display-select
+                data-tooltip="{{localize 'PVC.Panel.DisplayHint'}}">
+          {{#each displays}}
+          <option value="{{value}}">{{label}}</option>
+          {{/each}}
+        </select>
+      </div>
+    </div>
   </div>
 
   <p class="hint">{{localize "PVC.Panel.TrackNameHint"}}</p>
+
+  {{!-- Named seats are written on the track's own card, for the same reason the
+        ladder and the label list are: there are no seats to name until the
+        track exists and its target or its ladder says how many there are. --}}
+  <p class="hint" data-display-group="circle">{{localize "PVC.Panel.CircleCreateHint"}}</p>
 
   <div class="pvc-field-row" data-mode-group="progress steps">
     <div class="form-group pvc-field-narrow">
@@ -161,7 +183,7 @@
         would otherwise keep its red numerals while its band tone says the
         opposite; and a threshold track never completes. --}}
   <div class="pvc-track-card{{#if threshold}} pvc-threshold pvc-tone-{{tone}}{{else}}{{#if stepped}} pvc-stepped{{/if}}{{#if negative}} pvc-negative{{/if}}{{#if complete}} pvc-resolved{{/if}}{{/if}}"
-       data-id="{{id}}" data-mode-scope data-mode="{{mode}}">
+       data-id="{{id}}" data-mode-scope data-mode="{{mode}}" data-display="{{display}}">
 
     <div class="pvc-panel-status-line">
       {{#if threshold}}
@@ -206,7 +228,12 @@
       </div>
     </div>
 
-    {{#if threshold}}
+    {{!-- Ordered exactly as the HUD orders it, so the two windows cannot draw
+          the same track differently: the circle is a per-track choice and wins
+          over all three of the readouts it was chosen instead of. --}}
+    {{#if circle}}
+    {{> "modules/victory-counter/templates/rune-circle.hbs"}}
+    {{else if threshold}}
     {{> "modules/victory-counter/templates/threshold-ladder.hbs"}}
     {{else if stepped}}
     {{!-- The strip replaces the ring for the same reason the ladder does: it
@@ -227,15 +254,62 @@
       </div>
     </div>
 
-    <div class="form-group pvc-field-narrow">
-      <label for="pvc-mode-{{id}}">{{localize "PVC.Panel.Mode"}}</label>
-      <div class="form-fields">
-        <select id="pvc-mode-{{id}}" name="mode-{{id}}" data-mode-select
-                data-tooltip="{{localize 'PVC.Panel.ModeHint'}}">
-          {{#each ../modes}}
-          <option value="{{value}}" {{#if (eq value ../mode)}}selected{{/if}}>{{label}}</option>
-          {{/each}}
-        </select>
+    <div class="pvc-field-row">
+      <div class="form-group pvc-field-narrow">
+        <label for="pvc-mode-{{id}}">{{localize "PVC.Panel.Mode"}}</label>
+        <div class="form-fields">
+          <select id="pvc-mode-{{id}}" name="mode-{{id}}" data-mode-select
+                  data-tooltip="{{localize 'PVC.Panel.ModeHint'}}">
+            {{#each ../modes}}
+            <option value="{{value}}" {{#if (eq value ../mode)}}selected{{/if}}>{{label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      </div>
+
+      {{!-- Display sits beside mode because the pair is one sentence — how this
+            track counts, and how it is drawn — and because putting it inside a
+            mode group would suggest it belongs to one of them. It belongs to
+            all of them. --}}
+      <div class="form-group pvc-field-narrow">
+        <label for="pvc-display-{{id}}">{{localize "PVC.Panel.Display"}}</label>
+        <div class="form-fields">
+          <select id="pvc-display-{{id}}" name="display-{{id}}" data-display-select
+                  data-tooltip="{{localize 'PVC.Panel.DisplayHint'}}">
+            {{#each ../displays}}
+            <option value="{{value}}" {{#if (eq value ../display)}}selected{{/if}}>{{label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div data-display-group="circle">
+      {{#if circleUnavailable}}
+      {{!-- The GM asked for a circle and this track cannot hold one. Said here,
+            next to the select that asked, rather than left as a card that looks
+            like the choice did not take. Inside the display group with the rest,
+            so switching the select back to Standard withdraws the complaint
+            immediately rather than leaving it up until Apply. --}}
+      <p class="notes pvc-circle-notice">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        {{localize "PVC.Panel.CircleUnavailable" seats=seatCount max=maxPositions}}
+      </p>
+      {{/if}}
+
+      <div class="pvc-ladder-summary">
+        <span class="notes">
+          {{#if runeCount}}
+          {{localize "PVC.Panel.RunesSummary" count=runeCount}}
+          {{else}}
+          {{localize "PVC.Panel.RunesEmpty"}}
+          {{/if}}
+        </span>
+        <button type="button" data-action="editRunes" data-id="{{id}}"
+                data-tooltip="{{localize 'PVC.Panel.EditRunesHint'}}">
+          <i class="fa-solid fa-circle-nodes" aria-hidden="true"></i>
+          {{localize "PVC.Panel.EditRunes"}}
+        </button>
       </div>
     </div>
 

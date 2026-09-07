@@ -1,6 +1,7 @@
 /**
- * The one piece of row editing the threshold ladder editor and the step label
- * editor genuinely share: reading their rows back out of the DOM into a draft.
+ * The one piece of row editing the threshold ladder editor, the step label
+ * editor and the rune editor genuinely share: reading their rows back out of
+ * the DOM into a draft.
  *
  * Both windows hold their edits locally until the GM saves, which means both
  * have to re-read every visible field before any action that re-renders — add a
@@ -37,5 +38,33 @@ export function readRungRows(root, selector) {
     // Missing checkbox means the row was rendered without the control at all,
     // which should read as "still announcing" rather than as "muted".
     announce: row.querySelector('[data-field="announce"]')?.checked !== false
+  }));
+}
+
+/**
+ * Read every seat row of the rune editor back into a plain draft array.
+ *
+ * A separate reader rather than a shape {@link readRungRows} could be widened
+ * to cover, because a rune override genuinely is not a rung: it has no value,
+ * no description and no announcement, and it is filed under the key of a seat
+ * that already exists rather than under an id of its own. Merging the two would
+ * mean every caller sifting fields that are always absent for one of them.
+ *
+ * The `data-field` rule above applies unchanged, and for the same reason.
+ *
+ * Values are returned exactly as typed; trimming, truncation and the decision
+ * that a row saying nothing is not an override belong to `sanitizeRunes`.
+ *
+ * @param {HTMLElement|null} root     The editor's root element.
+ * @param {string}           selector Row selector, e.g. `"[data-rune-row]"`.
+ * @returns {Array<{key: string, glyph: string, label: string}>}
+ */
+export function readRuneRows(root, selector) {
+  if (!root) return [];
+
+  return [...root.querySelectorAll(selector)].map((row) => ({
+    key: row.dataset.key,
+    glyph: row.querySelector('[data-field="glyph"]')?.value,
+    label: row.querySelector('[data-field="label"]')?.value
   }));
 }

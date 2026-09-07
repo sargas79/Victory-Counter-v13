@@ -64,8 +64,11 @@ export const SETTINGS = Object.freeze({
  * - 5:   the step fields (`steps`, `step`, `announceSteps`, `revealSteps`).
  *        Additive in the same way: a v4 record becomes a v5 record of whatever
  *        mode it already had, with an empty label list it does not use.
+ * - 6:   the drawing fields (`display`, `runes`). Additive again, and unlike
+ *        every version above it does not touch counting at all: a v5 record
+ *        becomes a v6 record drawn exactly as it was drawn before.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** Resolution states a track can be in. */
 export const STATUS = Object.freeze({
@@ -98,6 +101,31 @@ export const TRACK_MODE_LABELS = Object.freeze({
   [TRACK_MODES.PROGRESS]: "PVC.Mode.Progress",
   [TRACK_MODES.THRESHOLD]: "PVC.Mode.Threshold",
   [TRACK_MODES.STEPS]: "PVC.Mode.Steps"
+});
+
+/**
+ * How a track is *drawn*. Stored per track, and deliberately separate from
+ * {@link TRACK_MODES}: mode decides how a track counts, display decides how the
+ * result is shown. Every combination of the two is valid, and changing one
+ * never changes the other.
+ *
+ * - `standard`: the readout each mode already had — a figure and a bar (or the
+ *               world's optional ring) for progress, the rail for a threshold
+ *               ladder, the strip for steps.
+ * - `circle`:   a ring of seats, one per position, with a rune adrift outside
+ *               it for every seat not yet earned. What a seat *is* comes from
+ *               the mode: one target step on a progress or steps track, one
+ *               rung on a threshold ladder.
+ */
+export const TRACK_DISPLAYS = Object.freeze({
+  STANDARD: "standard",
+  CIRCLE: "circle"
+});
+
+/** Localization keys for the display choices, keyed by stored value. */
+export const TRACK_DISPLAY_LABELS = Object.freeze({
+  [TRACK_DISPLAYS.STANDARD]: "PVC.Display.Standard",
+  [TRACK_DISPLAYS.CIRCLE]: "PVC.Display.Circle"
 });
 
 /**
@@ -173,7 +201,22 @@ export const LIMITS = Object.freeze({
    * it stays usable at a height that would leave the panel unusable.
    */
   MIN_EDITOR_WIDTH: 420,
-  MIN_EDITOR_HEIGHT: 260
+  MIN_EDITOR_HEIGHT: 260,
+  /**
+   * Rune editor window. Narrower than the ladder editor because a seat is a row
+   * of two short fields rather than four, and the same height floor because it
+   * is a scrolling list for the same reason.
+   */
+  MIN_RUNE_EDITOR_WIDTH: 360,
+  MIN_RUNE_EDITOR_HEIGHT: 260,
+  /**
+   * Longest glyph a GM may put in a seat. More than one character so a ligature,
+   * a combining mark or a surrogate pair still fits, and short enough that a
+   * seat cannot be turned into a word the circle has no room to draw.
+   */
+  MAX_RUNE_GLYPH: 4,
+  /** Longest name a GM may give a seat. Matches a threshold band's label. */
+  MAX_RUNE_LABEL: 60
 });
 
 /**
@@ -184,6 +227,106 @@ export const RING = Object.freeze({
   RADIUS: 42,
   CIRCUMFERENCE: Number((2 * Math.PI * 42).toFixed(3))
 });
+
+/**
+ * Geometry of the rune circle. Radii are percentages of the plate's own box, so
+ * the whole figure scales through CSS exactly as the ring does; only the seat
+ * positions are computed in JS, by {@link runeSeats}.
+ */
+export const CIRCLE = Object.freeze({
+  /** The ring earned runes settle onto. */
+  SEAT_RADIUS: 34,
+  /** Where an unearned rune hangs, before its per-seat jitter is applied. */
+  ADRIFT_RADIUS: 44,
+  /**
+   * Most seats a circle may hold, and therefore the largest track that can be
+   * drawn as one. It is the length of {@link RUNE_GLYPHS} on purpose: past the
+   * last stave a seat would have no glyph of its own, and clamping the count
+   * instead would break the metaphor outright, because one rune would stop
+   * meaning one success.
+   */
+  MAX_POSITIONS: 24
+});
+
+/**
+ * The default glyph for each seat: the 24 staves of the Elder Futhark, in their
+ * traditional order, so a circle is legible with no configuration at all — seat
+ * n gets stave n.
+ *
+ * The staves are stored as the characters themselves, and the Latin
+ * transliteration beside each row is what makes that safe to edit: an editor
+ * without Runic coverage draws the whole list as identical boxes, and the
+ * comment is then the only way to tell which box is which.
+ *
+ * They are rendered as text with an explicit font stack (see the stylesheet)
+ * rather than as glyph paths, so a *host* without Runic coverage degrades to a
+ * visible box rather than to nothing — and the GM can override any seat
+ * regardless, which is the real answer for a table whose browser cannot draw
+ * them.
+ */
+export const RUNE_GLYPHS = Object.freeze([
+  "ᚠ", "ᚢ", "ᚦ", "ᚨ", "ᚱ", "ᚲ", // f  u  th a  r  k
+  "ᚷ", "ᚹ", "ᚺ", "ᚾ", "ᛁ", "ᛃ", // g  w  h  n  i  j
+  "ᛇ", "ᛈ", "ᛉ", "ᛊ", "ᛏ", "ᛒ", // ei p  z  s  t  b
+  "ᛖ", "ᛗ", "ᛚ", "ᛜ", "ᛞ", "ᛟ"  // e  m  l  ng d  o
+]);
+
+/**
+ * A deterministic pseudo-random number in 0..1 for one seat.
+ *
+ * Deterministic is the whole requirement: an unearned rune has to hang in the
+ * same spot on every render, or it would jump around the plate each time the
+ * counter redraws. Seeding from the seat index rather than from `Math.random`
+ * is what buys that, and it costs nothing — the scatter only has to look
+ * disordered, not be unpredictable.
+ *
+ * @param {number} index
+ * @param {number} salt Distinguishes the several values one seat needs.
+ * @returns {number} 0..1
+ */
+function seatNoise(index, salt) {
+  const n = Math.sin((index + 1) * salt) * 10000;
+  return n - Math.floor(n);
+}
+
+/**
+ * Where each seat of a rune circle sits, and where its rune hangs until it is
+ * earned.
+ *
+ * Seats run clockwise from twelve o'clock, evenly spaced, as percentages of the
+ * plate. The adrift position shares its seat's angle — so a rune visibly slides
+ * *inward* to the place it belongs — offset by a jitter derived from the index,
+ * plus a small rotation, so the unearned runes read as scattered rather than as
+ * a tidy second ring.
+ *
+ * @param {number} count How many seats the circle has.
+ * @returns {Array<{index: number, left: number, top: number, adriftLeft: number,
+ *   adriftTop: number, rotation: number}>}
+ */
+export function runeSeats(count) {
+  const seats = Math.max(0, Math.min(CIRCLE.MAX_POSITIONS, Math.trunc(Number(count) || 0)));
+  const out = [];
+
+  for (let index = 0; index < seats; index++) {
+    // -90 degrees puts seat 0 at twelve o'clock; the sweep then runs clockwise.
+    const angle = (-90 + (index * 360) / seats) * (Math.PI / 180);
+    // +/- 15 degrees of angular drift and +/- 5 points of radial drift, both
+    // fixed per seat.
+    const driftAngle = angle + (seatNoise(index, 12.9898) - 0.5) * 0.52;
+    const driftRadius = CIRCLE.ADRIFT_RADIUS + (seatNoise(index, 78.233) - 0.5) * 10;
+
+    out.push({
+      index,
+      left: Number((50 + CIRCLE.SEAT_RADIUS * Math.cos(angle)).toFixed(2)),
+      top: Number((50 + CIRCLE.SEAT_RADIUS * Math.sin(angle)).toFixed(2)),
+      adriftLeft: Number((50 + driftRadius * Math.cos(driftAngle)).toFixed(2)),
+      adriftTop: Number((50 + driftRadius * Math.sin(driftAngle)).toFixed(2)),
+      rotation: Number(((seatNoise(index, 43.7585) - 0.5) * 44).toFixed(1))
+    });
+  }
+
+  return out;
+}
 
 /**
  * The immutable default shape of a single track. Any stored value is merged
@@ -198,6 +341,26 @@ export const DEFAULT_TRACK = Object.freeze({
   title: "",
   /** One of {@link TRACK_MODES}. Decides how `current` is bounded and read. */
   mode: TRACK_MODES.PROGRESS,
+  /**
+   * One of {@link TRACK_DISPLAYS}. How the track is drawn; never how it is
+   * counted. Nothing that reads or writes a value looks at this field.
+   */
+  display: TRACK_DISPLAYS.STANDARD,
+  /**
+   * Rune circle: per-seat overrides, `{key, glyph, label}`. An empty list means
+   * every seat uses its default stave, which is the normal case.
+   *
+   * `key` identifies a seat across re-renders and edits: the rung's id on a
+   * threshold track, the ordinal index as a string ("0", "1", ...) on any other.
+   * Keying threshold seats by rung id rather than by position is what stops an
+   * override reassigning itself when the GM inserts a rung into the middle of a
+   * ladder — the seat the GM named keeps its name and simply moves.
+   *
+   * Kept in every mode and under every display, for the same reason the ladder
+   * and the step labels are: switching how a track is drawn must not throw away
+   * wording the GM wrote.
+   */
+  runes: [],
   /** One of {@link TRACK_TYPES}. Per-track, never global. */
   type: TRACK_TYPES.POSITIVE,
   /** Current value. Never negative in progress mode; may be in threshold mode. */
