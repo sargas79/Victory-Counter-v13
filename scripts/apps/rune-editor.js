@@ -177,17 +177,39 @@ export class RuneEditor extends HandlebarsApplicationMixin(ApplicationV2) {
    * Read every visible seat row back into the draft, so text typed but not yet
    * saved survives an action that re-renders.
    *
-   * Rows the window is not showing are carried through untouched: an override
-   * whose seat is gone has no row to be read from, and rebuilding the draft from
-   * the visible rows alone would delete it the first time the GM saved anything
-   * at all. See `_prepareContext` for why those are kept.
+   * Two rules, and the order they are applied in is what makes them work
+   * together:
+   *
+   * 1. Rows the window is not showing are carried through untouched. An
+   *    override whose seat is gone has no row to be read from, so rebuilding the
+   *    draft from the visible rows alone would delete it the first time the GM
+   *    saved anything at all. See `_prepareContext` for why those are kept.
+   * 2. Only rows that actually override something are kept. A blank row is a
+   *    seat using its default, which is indistinguishable from having no entry —
+   *    and storing one anyway would make the draft disagree with `sanitizeRunes`
+   *    about what an override is. That disagreement is visible: if the track's
+   *    seats change while this window is open, a blank entry for a seat that has
+   *    since gone would be counted as an orphaned *customized* seat and reported
+   *    to the GM as wording they never wrote.
+   *
+   * The key set is built from every visible row, *before* the blanks are
+   * dropped, which is the part that keeps rule 2 from undoing rule 1's job: a
+   * row the GM has just cleared still suppresses the stored override it came
+   * from, rather than letting it be carried back in.
+   *
+   * The invariant this maintains is that the draft holds only real overrides —
+   * true of the seed too, since a stored list has already been through
+   * `sanitizeRunes`.
    */
   syncDraft() {
     if (!this.element) return;
     const visible = readRuneRows(this.element, "[data-rune-row]");
-    const seen = new Set(visible.map((row) => row.key));
-    const carried = (this.draft ?? []).filter((rune) => !seen.has(rune.key));
-    this.draft = [...visible, ...carried];
+    const onScreen = new Set(visible.map((row) => row.key));
+    const overriding = visible.filter(
+      (row) => String(row.glyph ?? "").trim() || String(row.label ?? "").trim()
+    );
+    const carried = (this.draft ?? []).filter((rune) => !onScreen.has(rune.key));
+    this.draft = [...overriding, ...carried];
   }
 
   /* ---------------------------------------- */
