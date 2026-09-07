@@ -269,6 +269,13 @@ export function migrateTrackData(raw) {
     ? raw.mode
     : TRACK_MODES.PROGRESS;
 
+  // --- v4 -> v5 -----------------------------------------------------------
+  // Additive again, and with nothing to reinterpret: the step fields (`steps`,
+  // `step`, `announceSteps`, `revealSteps`) are backfilled from DEFAULT_TRACK
+  // during sanitization, and a pre-5 track is in one of the two modes that
+  // never reads them. The `mode` guard above already accepts "steps", so a
+  // record hand-written into the new mode also lands here intact.
+
   // Polarity: honour an explicitly stored value, otherwise default to positive.
   // Applied at every version so a hand-edited or partially written record still
   // lands on a valid polarity.

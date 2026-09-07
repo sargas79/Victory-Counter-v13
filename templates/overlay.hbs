@@ -35,7 +35,7 @@
         below: `type` survives a switch to threshold mode, so a track that used
         to be a Negative progress track would otherwise keep painting itself red
         while its band says otherwise. --}}
-  <div class="pvc-compact pvc-{{status}}{{#if threshold}} pvc-threshold pvc-tone-{{tone}}{{else}}{{#if negative}} pvc-negative{{/if}}{{/if}}{{#if ../isGM}} pvc-compact-adjust{{/if}}"
+  <div class="pvc-compact pvc-{{status}}{{#if threshold}} pvc-threshold pvc-tone-{{tone}}{{else}}{{#if stepped}} pvc-stepped{{/if}}{{#if negative}} pvc-negative{{/if}}{{/if}}{{#if ../isGM}} pvc-compact-adjust{{/if}}"
        {{#if ../isGM}}role="button" tabindex="0" data-compact-adjust data-id="{{id}}"
        aria-label="{{localize 'PVC.Overlay.CompactAdjustLabel' progress=progressLabel}}"
        data-tooltip="{{localize 'PVC.Overlay.CompactAdjustHint'}}"
@@ -67,6 +67,18 @@
     <span class="pvc-compact-band pvc-tone-{{tone}}" title="{{bandLabel}}">{{bandLabel}}</span>
     <div class="pvc-track">
       <div class="pvc-track-fill" style="width: {{ladderPercent}}%"></div>
+    </div>
+    {{else if stepped}}
+    {{!-- A step track keeps its target — it still counts to one — and adds the
+          name of the step it is standing on, when that step has one and the
+          reader is allowed to see it. There is no room for the strip itself in
+          a chip, so the bar stands in for it. --}}
+    <span class="pvc-compact-target">/ {{target}}</span>
+    {{#if stepLabel}}
+    <span class="pvc-compact-step" title="{{stepLabel}}">{{stepLabel}}</span>
+    {{/if}}
+    <div class="pvc-track">
+      <div class="pvc-track-fill" style="width: {{percent}}%"></div>
     </div>
     {{else}}
     <span class="pvc-compact-target">/ {{target}}</span>
@@ -120,7 +132,7 @@
 
   <div class="pvc-track-grid">
   {{#each tracks}}
-  <article class="pvc-card pvc-{{status}}{{#if threshold}} pvc-threshold pvc-tone-{{tone}}{{else}}{{#if negative}} pvc-negative{{/if}}{{#if complete}} pvc-resolved{{/if}}{{/if}}">
+  <article class="pvc-card pvc-{{status}}{{#if threshold}} pvc-threshold pvc-tone-{{tone}}{{else}}{{#if stepped}} pvc-stepped{{/if}}{{#if negative}} pvc-negative{{/if}}{{#if complete}} pvc-resolved{{/if}}{{/if}}">
 
     <div class="pvc-card-header">
       <span class="pvc-card-title" title="{{displayTitle}}">{{displayTitle}}</span>
@@ -184,9 +196,40 @@
         {{typeLabel}}
       </span>
       <span class="pvc-status pvc-status-{{status}}">{{statusLabel}}</span>
+      {{#if stepLabel}}
+      {{!-- The step the track is standing on, when it has a name. Absent on the
+            numbers between milestones, which is the mode working as intended:
+            an unnamed step means nothing in particular has happened yet. --}}
+      <span class="pvc-step-badge"
+            data-tooltip="{{#if stepDescription}}{{stepDescription}}{{else}}{{stepLabel}}{{/if}}">
+        <span class="pvc-type-mark" aria-hidden="true">
+          <svg viewBox="0 0 256 256" fill="currentColor"><path d="M224,64a8,8,0,0,1-8,8H120a8,8,0,0,1,0-16h96A8,8,0,0,1,224,64Zm-8,56H120a8,8,0,0,0,0,16h96a8,8,0,0,0,0-16Zm0,64H120a8,8,0,0,0,0,16h96a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></svg>
+        </span>
+        {{stepLabel}}
+      </span>
+      {{/if}}
     </div>
 
-    {{#if ../rings}}
+    {{#if stepped}}
+    {{!-- ===== Step readout ===== --}}
+    {{!-- Rings are skipped here for the same reason they are skipped on a
+          threshold track: the strip below *is* the readout, and a ring beside
+          it would be a second, coarser answer to the same question. --}}
+    <div class="pvc-readout" aria-label="{{progressLabel}}">
+      <div class="pvc-figure">
+        <span class="pvc-figure-value">{{current}}</span>
+        <span class="pvc-figure-target">/ {{target}}</span>
+      </div>
+      <span class="pvc-kicker">{{#if stepLabel}}{{stepLabel}}{{else}}{{percent}}%{{/if}}</span>
+    </div>
+
+    {{> "modules/victory-counter/templates/step-track.hbs"}}
+
+    {{#if stepDescription}}
+    <p class="pvc-band-description">{{stepDescription}}</p>
+    {{/if}}
+
+    {{else if ../rings}}
     {{!-- ===== Ring readout ===== --}}
     <div class="pvc-ring-wrap">
       {{> "modules/victory-counter/templates/progress-ring.hbs" ring=../ring}}

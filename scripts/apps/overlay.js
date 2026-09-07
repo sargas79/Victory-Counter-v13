@@ -30,6 +30,7 @@ import {
   adjustTrack,
   getVisibleTracks,
   hasUndo,
+  isStepTrack,
   isThresholdTrack,
   ringsEnabled,
   setTrackCurrent,
@@ -37,6 +38,7 @@ import {
   undo
 } from "../state.js";
 import { trackCardBase } from "../track-view.js";
+import { buildStepView } from "../step-view.js";
 import { buildThresholdView } from "../threshold-view.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -82,8 +84,6 @@ export class VictoryCounterOverlay extends HandlebarsApplicationMixin(Applicatio
         lastChange: this.#formatLastChange(track)
       };
 
-      if (!isThresholdTrack(track)) return { ...base, threshold: false };
-
       // A threshold track replaces the progress readout wholesale, including its
       // aria label — "4 of 12" says nothing useful when the meaning lives in the
       // band rather than in the distance to a target.
@@ -91,12 +91,30 @@ export class VictoryCounterOverlay extends HandlebarsApplicationMixin(Applicatio
       // Rung *numbers* are the GM's to give away: players see the ticks and
       // their own band either way, and the rest of the ladder only when the GM
       // has revealed it.
-      return {
-        ...base,
-        ...buildThresholdView(track, {
-          showLadder: isGM || track.revealLadder === true
-        })
-      };
+      if (isThresholdTrack(track)) {
+        return {
+          ...base,
+          ...buildThresholdView(track, {
+            showLadder: isGM || track.revealLadder === true
+          })
+        };
+      }
+
+      // A step track keeps the progress readout — it still counts to a target —
+      // and adds the strip and the name of the step it is standing on. What is
+      // the GM's to give away here is the road *ahead*: steps already reached
+      // are named for everyone, because the card has to be able to say what just
+      // happened.
+      if (isStepTrack(track)) {
+        return {
+          ...base,
+          ...buildStepView(track, {
+            revealAll: isGM || track.revealSteps === true
+          })
+        };
+      }
+
+      return { ...base, threshold: false, stepped: false };
     });
 
     return {

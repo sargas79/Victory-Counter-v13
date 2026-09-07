@@ -27,11 +27,13 @@ import {
   createTrack,
   getTracks,
   hasUndo,
+  isStepTrack,
   isThresholdTrack,
   moveTrack,
   removeTrack,
   resetTrackProgress,
   ringsEnabled,
+  toggleStepAnnounce,
   toggleThresholdAnnounce,
   toggleTrackAnnounce,
   toggleTrackVisibility,
@@ -39,6 +41,7 @@ import {
   updateTrackConfig
 } from "../state.js";
 import { trackCardBase } from "../track-view.js";
+import { buildStepView } from "../step-view.js";
 import { buildThresholdView } from "../threshold-view.js";
 import { clampToMinimum, refitToViewport } from "./window-fit.js";
 
@@ -80,7 +83,9 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       toggleVisibility: this.onToggleVisibility,
       toggleAnnounce: this.onToggleAnnounce,
       toggleThresholdAnnounce: this.onToggleThresholdAnnounce,
+      toggleStepAnnounce: this.onToggleStepAnnounce,
       editThresholds: this.onEditThresholds,
+      editSteps: this.onEditSteps,
       moveTrack: this.onMove,
       undoChange: this.onUndo
     }
@@ -98,6 +103,7 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
     const rings = ringsEnabled();
     const tracks = getTracks().map((track) => {
       const threshold = isThresholdTrack(track);
+      const stepped = isStepTrack(track);
 
       const base = {
         ...trackCardBase(track),
@@ -105,13 +111,19 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
         // Shown on both modes so a GM who switched a track to progress can still
         // see that a ladder is waiting for it.
         thresholdCount: track.thresholds.length,
-        announcingThresholds: track.announceThresholds !== false
+        announcingThresholds: track.announceThresholds !== false,
+        // Shown on every mode too, for the same reason: a GM who switched a step
+        // track to another mode can still see that labels are waiting for it.
+        stepCount: track.steps.length,
+        announcingSteps: track.announceSteps !== false
       };
 
-      if (!threshold) return { ...base, threshold: false };
+      // The GM always sees the whole ladder and every label; revealLadder and
+      // revealSteps only govern what players are shown.
+      if (threshold) return { ...base, ...buildThresholdView(track, { showLadder: true }) };
+      if (stepped) return { ...base, ...buildStepView(track, { revealAll: true }) };
 
-      // The GM always sees the whole ladder; revealLadder only governs players.
-      return { ...base, ...buildThresholdView(track, { showLadder: true }) };
+      return { ...base, threshold: false, stepped: false };
     });
 
     return {
@@ -137,6 +149,10 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
         {
           value: TRACK_MODES.THRESHOLD,
           label: game.i18n.localize("PVC.Mode.Threshold")
+        },
+        {
+          value: TRACK_MODES.STEPS,
+          label: game.i18n.localize("PVC.Mode.Steps")
         }
       ],
       types: [
@@ -189,6 +205,7 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       type: Object.values(TRACK_TYPES).includes(type) ? type : TRACK_TYPES.POSITIVE,
       visibleToPlayers: field("visibleToPlayers")?.checked === true,
       revealLadder: field("revealLadder")?.checked === true,
+      revealSteps: field("revealSteps")?.checked === true,
       ...VictoryCounterPanel.readModeFields(field)
     };
   }
@@ -196,9 +213,10 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
   /**
    * Read the configuration fields for an existing track's card.
    *
-   * `postToChat`, `announceThresholds` and `thresholds` are all left out on
-   * purpose: the first two have their own immediate toggles and the third has
-   * its own editor, so applying other config changes must never overwrite them.
+   * `postToChat`, the two announcement flags, `thresholds` and `steps` are all
+   * left out on purpose: the flags have their own immediate toggles and the two
+   * lists have their own editors, so applying other config changes must never
+   * overwrite them.
    *
    * @param {string} id
    * @returns {object}
@@ -213,6 +231,7 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       type: Object.values(TRACK_TYPES).includes(type) ? type : TRACK_TYPES.POSITIVE,
       visibleToPlayers: field("visibleToPlayers")?.checked === true,
       revealLadder: field("revealLadder")?.checked === true,
+      revealSteps: field("revealSteps")?.checked === true,
       ...VictoryCounterPanel.readModeFields(field)
     };
   }
@@ -398,6 +417,20 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
   }
 
   /**
+   * Turn this track's step-label announcements on or off. The steps-mode twin of
+   * the band toggle above, and independent of the value-change toggle for the
+   * same reason: a GM commonly wants silence on every point but a card the
+   * moment the clock reaches something that was worth naming.
+   * @this {VictoryCounterPanel}
+   * @param {PointerEvent} event
+   * @param {HTMLElement}  target
+   */
+  static async onToggleStepAnnounce(event, target) {
+    await toggleStepAnnounce(target.dataset.id);
+    await this.render();
+  }
+
+  /**
    * Open the ladder editor for this track.
    *
    * Imported on demand for the same reason `hooks.js` loads the applications
@@ -415,6 +448,25 @@ export class VictoryCounterPanel extends HandlebarsApplicationMixin(ApplicationV
       await ThresholdEditor.open(id);
     } catch (err) {
       console.error(`[${MODULE_ID}] The threshold editor could not be loaded.`, err);
+      ui.notifications.error(game.i18n.localize("PVC.Notify.UILoadFailed"));
+    }
+  }
+
+  /**
+   * Open the step label editor for this track. Imported on demand for the same
+   * reason the ladder editor is.
+   *
+   * @this {VictoryCounterPanel}
+   * @param {PointerEvent} event
+   * @param {HTMLElement}  target
+   */
+  static async onEditSteps(event, target) {
+    const id = target.dataset.id;
+    try {
+      const { StepEditor } = await import("./step-editor.js");
+      await StepEditor.open(id);
+    } catch (err) {
+      console.error(`[${MODULE_ID}] The step label editor could not be loaded.`, err);
       ui.notifications.error(game.i18n.localize("PVC.Notify.UILoadFailed"));
     }
   }

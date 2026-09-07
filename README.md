@@ -34,6 +34,11 @@ A track runs in one of two **modes**:
   band, in either direction, it can post a chat card naming the band and quoting
   its description. Skipped bands are listed rather than swallowed. Toggle it per
   track, and per band.
+- **Named steps.** A step track counts to its target like a progress track but is
+  drawn as that many discrete steps, up to 10 of which the GM may name. A name
+  belongs to its own step and says nothing about the ones above it — which is
+  what makes it a milestone rather than a band. Reaching one can announce itself
+  in chat, and can stay secret from players until the track arrives.
 - **Positive and negative tracks.** Positive is the default and keeps the
   module's accent colour. Negative tracks show their progress numbers and ring
   in red — plus an arrow icon and the written word *Negative*, so the
@@ -47,7 +52,8 @@ A track runs in one of two **modes**:
   grip to resize it. Double-click either to reset. Position, width, scale and
   collapsed state are per-user.
 - **Compact mode.** Collapses to one slim chip per track — value and target on a
-  progress track, value and band name on a threshold track.
+  progress track, value and band name on a threshold track, value, target and
+  the name of the step it is standing on for a step track.
 - **GM quick controls.** `-` / `+` and a "set" field on the HUD itself, plus a
   full control panel. The eye button toggles player visibility in one click.
 - **Hide from players.** Run a track the party cannot see; chat cards are
@@ -116,21 +122,24 @@ New-Item -ItemType SymbolicLink -Path "$env:LOCALAPPDATA\FoundryVTT\Data\modules
 2. Fill in the track name and pick a **Mode**.
    - *Progress*: set the **Target** and the **Type** (*Positive* or *Negative*).
    - *Thresholds*: set **Start**, **Minimum** and **Maximum**.
+   - *Steps*: set the **Target** — that is how many steps the track has — and the
+     **Type**.
 3. Leave **Visible to Players** on so the party can see the track; turn it off
    to run a hidden one.
 4. Click **Add Track**. Repeat for as many tracks as the scene needs.
 5. For a threshold track, click **Edit Thresholds** on its card and describe each
-   band (see below).
+   band; for a step track, click **Edit Step Labels** and name the steps that
+   matter (both are described below).
 6. During play, use `-` / `+` in the panel or directly on the HUD. To jump to a
    value, type it into the track's "set" field and press Enter.
 7. **Undo Last Change** reverts the most recent change. **Reset Progress**
-   zeroes a progress track; on a threshold track the same button reads **Reset to
-   Start** and returns it to its starting value. **End Track** removes it from
-   every screen.
+   zeroes a progress or step track; on a threshold track the same button reads
+   **Reset to Start** and returns it to its starting value. **End Track** removes
+   it from every screen.
 
 Resetting or ending a track always asks for confirmation first.
 
-By default a progress track that has reached its target refuses further
+By default a progress or step track that has reached its target refuses further
 increases. Turn on **Allow Progress Beyond Target** in the module settings if you
 want it to keep counting past the finish line. Threshold tracks ignore that
 setting: they are bounded by their own **Minimum** and **Maximum** instead.
@@ -175,6 +184,58 @@ changing is not the same event as the value moving across it.
 band, its description, and the shape of the scale, but not the other bands'
 numbers or descriptions. Turn it on to make the whole ladder public.
 
+#### Step tracks
+
+A step track is a clock. Say the party has six steps to breach a vault, and two
+of those steps are worth naming:
+
+| At step | Name | Means |
+| --- | --- | --- |
+| 3 | The Alarm Is Raised | The watch doubles and the inner gate is barred. |
+| 6 | The Vault Is Open | They are through. |
+
+Create the track in **Steps** mode with Target 6, then add those two labels in
+**Edit Step Labels**. The HUD draws six pips, filled up to the current value,
+with a mark on 3 and 6.
+
+The difference from a threshold ladder is the whole reason both modes exist. A
+threshold band owns every number from its rung up to the next one, so a track at
+7 on a ladder with rungs at 6 and 9 still reads *Uneasy Truce*. A step label owns
+**one step**: a track at 4 on this clock has no label at all, because nothing in
+particular happens at 4. Use thresholds when a number describes a *state*, and
+steps when it marks an *event*.
+
+Otherwise a step track behaves exactly like a progress track: it counts up from
+zero, completes at its target, carries a polarity, and resets to zero.
+
+Announcements work the same way bands do:
+
+| Switch | Where | Covers |
+| --- | --- | --- |
+| **Post Progress to Chat** | Module settings | Every card, for every track. Master switch. |
+| **Announce in Chat** | Track card | Every value change on that track. |
+| **Announce Named Steps** | Track card | Only reaching or passing a named step. |
+| **Announce This Step** | Step label editor | Lets one step pass without comment. |
+
+A jump that crosses several named steps posts one card: it names the step it
+landed on and lists the ones it passed on the way. Moving between unnamed
+numbers announces nothing. Rewriting the labels never announces anything.
+
+**Show Players Every Label** is off by default, and it governs the road *ahead*.
+Players always see the whole strip, and they always read the name of a step the
+track has already reached — a milestone the party has hit is not a secret, and
+the chat card has to be able to say what just happened. What they do not see
+until the GM turns this on is the name waiting at a step still in front of them;
+that pip shows only as marked.
+
+Up to **10 steps** on one track may be named, and two labels cannot share a step.
+A label past the track's target is kept but flagged as unreachable in the editor,
+so lowering the target does not destroy wording the GM wrote.
+
+Step tracks are drawn as pips up to 20 steps. Past that the strip becomes a bar
+with a tick at each named step, which stays readable where forty slivers would
+not.
+
 ### Players
 
 - The HUD appears automatically when the GM starts a visible track.
@@ -193,7 +254,9 @@ On a progress track, players see the name, the Positive/Negative indicator, the
 current value against the target, the ring (when enabled) and the completion
 state. On a threshold track they see the name, the value, the band they are
 currently in and what it means, and where they sit on the scale — the rest of the
-ladder only if the GM has revealed it.
+ladder only if the GM has revealed it. On a step track they see the whole strip,
+which steps are named, and the names of the ones already reached — the names
+still ahead only if the GM has revealed them.
 
 ### Macro API
 
@@ -244,6 +307,30 @@ Rungs may be passed in any order; ids are generated for any that arrive without
 one, and the list is sorted, deduplicated by value and capped on the way in.
 Writing a ladder never posts a chat card.
 
+Step tracks use the same value calls again, plus a label list of their own:
+
+```js
+const vault = await vc.create({
+  title: "Breach the Vault",
+  mode: vc.MODES.STEPS,
+  target: 6
+});
+
+await vc.setSteps(vault.id, [
+  { value: 3, label: "The Alarm Is Raised", description: "The watch doubles." },
+  { value: 6, label: "The Vault Is Open",   description: "They are through." }
+]);
+
+await vc.increase(vault.id, 3);   // 0 -> 3, announces "The Alarm Is Raised"
+await vc.increase(vault.id, 3);   // 3 -> 6, announces "The Vault Is Open"; completes
+vc.getStep(vault.id);             // the label on the current step, or null
+await vc.toggleStepAnnounce(vault.id);
+```
+
+`getStep()` returns null on any step the GM did not name — that is the mode
+working as intended, not an error. Labels are sorted, deduplicated by step and
+capped at 10 on the way in, and writing them never posts a chat card.
+
 All mutating calls are GM-only and fail with a notification for other users.
 
 `addSuccess()` and `setCounts()` still work as deprecated aliases for
@@ -256,7 +343,7 @@ One world setting (`tracks`) holds an array of:
 
 ```json
 {
-  "schema": 4,
+  "schema": 5,
   "id": "unique-track-id",
   "active": true,
   "title": "Raise the Alarm",
@@ -271,6 +358,10 @@ One world setting (`tracks`) holds an array of:
   "band": null,
   "announceThresholds": true,
   "revealLadder": false,
+  "steps": [],
+  "step": null,
+  "announceSteps": true,
+  "revealSteps": false,
   "visibleToPlayers": true,
   "postToChat": true,
   "status": "running",
@@ -280,29 +371,41 @@ One world setting (`tracks`) holds an array of:
 ```
 
 `mode` decides which fields mean anything. A `progress` track reads `target` and
-ignores `start`/`min`/`max`/`thresholds`; a `threshold` track does the reverse.
-The unused fields are kept rather than stripped, so switching a track between
-modes and back does not throw away a ladder the GM wrote.
+ignores `start`/`min`/`max`/`thresholds`/`steps`; a `threshold` track reads the
+bounds and the ladder instead; a `steps` track reads `target` and `steps`. The
+unused fields are kept rather than stripped, so switching a track between modes
+and back does not throw away a ladder or a label list the GM wrote.
 
 Each entry in `thresholds` is
 `{ "id": "...", "value": 3, "label": "Strained", "description": "...", "announce": true }`.
 The array is sorted ascending by `value` and deduplicated by it on every read, so
 only one band can ever own a given number.
 
-Two fields are derived and never authored:
+Each entry in `steps` has the same shape. It is sorted and deduplicated by the
+same rules, and capped at 10 rather than 12, but `value` means something
+different: a rung's value is where a band *begins*, while a label's value is the
+one step it names.
 
-- `status` — `complete` when a progress track has `current >= target`, otherwise
-  `running`. A threshold track is always `running`; it has no finish line.
+Three fields are derived and never authored:
+
+- `status` — `complete` when a progress or steps track has `current >= target`,
+  otherwise `running`. A threshold track is always `running`; it has no finish
+  line.
 - `band` — the id of the threshold the value currently sits in, or `null` when it
   is below every rung. Recomputed on every read so a hand-edited ladder cannot
   leave it pointing at a rung that no longer exists, but also stored, because
   announcements compare the band before a change with the band after it.
+- `step` — the id of the label sitting exactly on `current`, or `null` when that
+  step is unnamed. Recomputed and stored for the same two reasons.
 
 `legacy` holds the pre-schema-3 failure fields of a migrated track, and is never
 read at runtime.
 
-Upgrading from schema 3 is purely additive: every track gains `mode: "progress"`,
-which is exactly what it already was, and no stored value changes meaning.
+Upgrading from schema 4 is purely additive: every track gains an empty `steps`
+list and the three fields that go with it, none of which the two existing modes
+read. Upgrading from schema 3 is additive in the same way: every track gains
+`mode: "progress"`, which is exactly what it already was, and no stored value
+changes meaning.
 Upgrading from schema 2 migrates `successes → current` and
 `requiredSuccesses → target`, defaults every track to `type: "positive"`, and
 preserves the failure fields under `legacy`. The migration is versioned and
@@ -441,23 +544,58 @@ resolved. Run it once per v13 world before trusting the rest of the plan.
 34. Collapse the HUD. The threshold chip shows the value and band name, with no
     `/ target`.
 
+**Step tracks**
+
+35. Create a step track with Target 6 and the two labels from the table above.
+    The HUD shows six pips, none filled, `0 / 6`, and a mark on pips 3 and 6.
+36. Press `+` three times. Pips 1-3 fill, pip 3 is outlined as the current step,
+    the card names *The Alarm Is Raised* and quotes its description, and one chat
+    card announces reaching it.
+37. Press `+` once, to 4. No card names a step, and the card shows no step name:
+    step 4 is unnamed, which is the mode working correctly.
+38. Set the value to 6 from 1 in one step. One card is posted, naming *The Vault
+    Is Open* as reached and listing *The Alarm Is Raised* as passed through. The
+    track reads **Complete**.
+39. Press `-` back to 2. The card reports falling back past the named step, and
+    the track reads **In Progress** again.
+40. Open **Edit Step Labels** and add an eleventh label. It is refused with a
+    notification naming the cap of 10. Add a label on a step that already has
+    one and save: one is dropped, with a notification explaining why.
+41. Lower the Target to 4 and reopen the editor. The label at step 6 is flagged
+    *Past the target* rather than deleted; raise the Target back to 6 and the
+    flag clears.
+42. Turn **Announce Named Steps** off and cross a named step. No card. Turn it
+    back on but turn that step's own **Announce This Step** off, and cross it
+    again: still no card. Turn both on: exactly one card.
+43. With **Show Players Every Label** off, log in as a player. Every pip and both
+    marks are visible; the name of a step already reached is readable, and one
+    still ahead reads *Not yet revealed*. Turn the setting on: the name appears.
+44. With the GM and player both connected, press `+`. The player's strip, pip
+    fill and step name update without a reload.
+45. Set the Target to 40. The strip becomes a bar with a tick at each named step
+    rather than forty pips.
+46. Collapse the HUD. The step chip shows the value, the target and the name of
+    the step it is standing on.
+47. Switch a step track to **Thresholds** mode and back. The labels are still
+    there, and no chat card was posted for either switch.
+
 **Terminology**
 
-35. Search the HUD, panel, dialogs, chat cards and settings for the word
+48. Search the HUD, panel, dialogs, chat cards and settings for the word
     "successes". It should not appear.
 
 **Permissions and sync**
 
-36. As a player, try the API: `game.modules.get("victory-counter").api
+49. As a player, try the API: `game.modules.get("victory-counter").api
     .increase(id)`. It is refused with a GM-only notification.
-37. With a GM and a player connected, change a track on the GM screen. The
+50. With a GM and a player connected, change a track on the GM screen. The
     player's HUD updates immediately without a reload.
-38. Hide a track from players. It disappears from the player HUD, and its chat
+51. Hide a track from players. It disappears from the player HUD, and its chat
     cards are whispered — including band-change cards.
 
 **Systems**
 
-39. Load the same world under a different game system (or a second world running
+52. Load the same world under a different game system (or a second world running
     one). The HUD, panel, chat cards and settings all behave identically and the
     console stays clean.
 
