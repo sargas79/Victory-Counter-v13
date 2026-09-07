@@ -5,6 +5,13 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-07
+
+Note: the 2.1.x releases were published without changelog sections of their own.
+The threshold-track and Foundry v13 entries below therefore describe work that
+first shipped in 2.1.0-2.1.2; they are recorded here because this is the first
+release whose notes were written. Everything under *Step tracks* is new in 2.2.0.
+
 ### Added
 
 - **Step tracks.** A third mode. *Steps* counts to a target exactly as *Progress*
