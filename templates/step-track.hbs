@@ -1,0 +1,64 @@
+{{!--
+  The strip a step track is read against, shared by the HUD and the GM control
+  panel the way `threshold-ladder.hbs` is.
+
+  Expects a step-shaped context: `segmented`, `pips`, `marks`, `percent`,
+  `current`, `target` and `progressLabel`.
+
+  Segmented is the point of the mode: one pip per step, filled up to the current
+  value, so the track reads as a countable clock rather than as a distance. The
+  pips are equal because the steps genuinely are — unlike threshold bands, which
+  is exactly why that mode draws a continuous rail instead.
+
+  Past `LIMITS.MAX_STEP_PIPS` steps the pips would be thinner than the gaps
+  between them, so the strip falls back to the same bar every progress track
+  uses, with a tick at each named step. Same data, a scale that fits.
+
+  A named step the viewer may not read yet still draws its mark: players should
+  be able to see that something is waiting at step 8 without being told what.
+  Naming is never carried by colour alone — a named pip is marked, the current
+  one is outlined, and the names themselves are written out underneath.
+
+  The strip is aria-hidden and the wrapper carries the full label, so a screen
+  reader announces "Breach the Vault, step 3 of 6, Alarm Raised" rather than a
+  row of loose digits.
+--}}
+<div class="pvc-steps" role="img" aria-label="{{progressLabel}}">
+
+  {{#if segmented}}
+  <div class="pvc-step-strip" aria-hidden="true">
+    {{#each pips}}
+    <span class="pvc-step-pip{{#if filled}} pvc-step-filled{{/if}}{{#if labelled}} pvc-step-labelled{{/if}}{{#if current}} pvc-step-current{{/if}}"
+          data-tooltip="{{tooltip}}">
+      <span class="pvc-step-index">{{index}}</span>
+      {{#if labelled}}
+      <span class="pvc-step-dot" aria-hidden="true"></span>
+      {{/if}}
+    </span>
+    {{/each}}
+  </div>
+
+  {{else}}
+  {{!-- Bar fallback for long tracks. Ticks sit at the named steps only; the
+        unnamed ones have nothing to say and would only crowd the rail. --}}
+  <div class="pvc-step-rail" aria-hidden="true">
+    <div class="pvc-step-rail-fill" style="width: {{percent}}%"></div>
+    {{#each marks}}
+    <span class="pvc-step-tick{{#if filled}} pvc-step-tick-reached{{/if}}{{#if current}} pvc-step-tick-current{{/if}}"
+          style="left: {{percent}}%" data-tooltip="{{tooltip}}"></span>
+    {{/each}}
+  </div>
+  {{/if}}
+
+  {{#if marks.length}}
+  <div class="pvc-step-legend" aria-hidden="true">
+    {{#each marks}}
+    <span class="pvc-step-mark{{#if filled}} pvc-step-mark-reached{{/if}}{{#if current}} pvc-step-mark-current{{/if}}{{#unless named}} pvc-step-mark-hidden{{/unless}}"
+          data-tooltip="{{tooltip}}">
+      <span class="pvc-step-mark-value">{{index}}</span>
+      <span class="pvc-step-mark-name">{{#if named}}{{name}}{{else}}{{localize "PVC.Step.Unrevealed"}}{{/if}}</span>
+    </span>
+    {{/each}}
+  </div>
+  {{/if}}
+</div>

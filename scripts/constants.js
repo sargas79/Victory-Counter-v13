@@ -61,8 +61,11 @@ export const SETTINGS = Object.freeze({
  * - 4:   `mode`, plus the threshold fields (`start`, `min`, `max`, `thresholds`,
  *        `band`). Purely additive: every v3 field keeps its meaning, and a v3
  *        record becomes a v4 progress track without any value being rewritten.
+ * - 5:   the step fields (`steps`, `step`, `announceSteps`, `revealSteps`).
+ *        Additive in the same way: a v4 record becomes a v5 record of whatever
+ *        mode it already had, with an empty label list it does not use.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** Resolution states a track can be in. */
 export const STATUS = Object.freeze({
@@ -78,16 +81,23 @@ export const STATUS = Object.freeze({
  * - `threshold`: starts at a GM-set value, moves up *and* down (below zero if
  *                the GM allows it), and never completes. Meaning comes from the
  *                band it currently sits in rather than from a finish line.
+ * - `steps`:     counts to a target exactly as `progress` does, but is drawn as
+ *                that many discrete steps, any of which the GM may name. A label
+ *                belongs to its own number only — it does not carry forward to
+ *                the numbers above it, which is what separates this mode from
+ *                `threshold`.
  */
 export const TRACK_MODES = Object.freeze({
   PROGRESS: "progress",
-  THRESHOLD: "threshold"
+  THRESHOLD: "threshold",
+  STEPS: "steps"
 });
 
 /** Localization keys for the mode choices, keyed by stored value. */
 export const TRACK_MODE_LABELS = Object.freeze({
   [TRACK_MODES.PROGRESS]: "PVC.Mode.Progress",
-  [TRACK_MODES.THRESHOLD]: "PVC.Mode.Threshold"
+  [TRACK_MODES.THRESHOLD]: "PVC.Mode.Threshold",
+  [TRACK_MODES.STEPS]: "PVC.Mode.Steps"
 });
 
 /**
@@ -138,6 +148,18 @@ export const LIMITS = Object.freeze({
   MAX_THRESHOLDS: 12,
   MAX_THRESHOLD_LABEL: 60,
   MAX_THRESHOLD_DESCRIPTION: 240,
+  /**
+   * Named steps on one step track. A step label is a milestone, not a scale:
+   * ten of them on a track is already a dense clock, and the strip has to stay
+   * readable at the HUD's narrowest width.
+   */
+  MAX_STEP_LABELS: 10,
+  /**
+   * Longest target that is still drawn as one pip per step. Past this the pips
+   * are thinner than the gaps between them, so the strip falls back to a bar
+   * with a tick at each labelled step.
+   */
+  MAX_STEP_PIPS: 20,
   /** Overlay surface width, driven by the resize grip. */
   MIN_OVERLAY_WIDTH: 264,
   MAX_OVERLAY_WIDTH: 1200,
@@ -210,6 +232,24 @@ export const DEFAULT_TRACK = Object.freeze({
   announceThresholds: true,
   /** Threshold mode: show players the whole ladder, not just their own band. */
   revealLadder: false,
+  /**
+   * Steps mode: the GM's named steps, `{id, value, label, description, announce}`.
+   * Same row shape as a threshold rung, and sanitized by the same rules — sorted
+   * ascending, one label per number — but read by exact match rather than by
+   * range, and kept while the track is in another mode for the same reason the
+   * ladder is.
+   */
+  steps: [],
+  /**
+   * Steps mode: id of the label sitting exactly on `current`, or null when this
+   * number is unnamed. Derived on every read, and stored for the same reason
+   * `band` is: reaching a label is announced by comparing before with after.
+   */
+  step: null,
+  /** Steps mode: announce reaching a named step in chat. Per-track GM decision. */
+  announceSteps: true,
+  /** Steps mode: show players the names of steps they have not reached yet. */
+  revealSteps: false,
   visibleToPlayers: true,
   /** Post a chat card when this track's progress changes. Gated by the world setting. */
   postToChat: true,
@@ -286,6 +326,61 @@ export function resolveBand(value, thresholds) {
     found = threshold;
   }
   return found;
+}
+
+/**
+ * The step labels that are actually on a track's strip: those from 1 up to its
+ * target.
+ *
+ * A label past the target is kept in storage on purpose — a GM who lowers the
+ * target still owns the wording they wrote, and raising it again brings the step
+ * back — but it is off the clock while the target stands where it does, and the
+ * step editor tells the GM exactly that.
+ *
+ * Filtering has to happen on the way *out*, at every read, because `current` is
+ * not bounded by `target`: the "allow progress beyond target" setting lets it
+ * climb past, and lowering the target leaves an already-higher value where it
+ * was. Without this, a value of 9 on a six-step clock would resolve a label the
+ * strip has no pip for, and the editor's "can never be reached" would be a lie.
+ *
+ * This is the single definition of "reachable step" that the strip, the stored
+ * `step` id, the announcements and the public API all read, so none of them can
+ * disagree about which labels exist.
+ *
+ * @param {Array<{value: number}>} steps
+ * @param {number} target
+ * @returns {object[]}
+ */
+export function reachableSteps(steps, target) {
+  const list = Array.isArray(steps) ? steps : [];
+  const ceiling = Number(target);
+  if (!Number.isFinite(ceiling)) return [];
+  return list.filter((step) => {
+    const value = Number(step?.value);
+    return Number.isFinite(value) && value >= 1 && value <= ceiling;
+  });
+}
+
+/**
+ * The step label sitting exactly on a value, or null when that number is unnamed.
+ *
+ * Deliberately an exact match rather than a reuse of {@link resolveBand}: a band
+ * owns every number from its rung up to the next one, while a step label names
+ * one number and says nothing about the ones around it. That difference is the
+ * whole reason steps mode exists alongside threshold mode.
+ *
+ * Callers pass the list from {@link reachableSteps}, never the raw stored array:
+ * a label off the strip must not resolve.
+ *
+ * @param {number} value
+ * @param {Array<{id: string, value: number}>} steps
+ * @returns {object|null}
+ */
+export function resolveStep(value, steps) {
+  const list = Array.isArray(steps) ? steps : [];
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return list.find((step) => Number(step.value) === n) ?? null;
 }
 
 /**

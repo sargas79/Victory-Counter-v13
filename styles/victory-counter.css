@@ -1272,9 +1272,16 @@
 /* --- Control panel ------------------------------------------------------ */
 
 /* Only the selected mode's fields are shown. The others stay in the DOM so the
-   form readers still find them and a mode switched twice loses nothing. */
-.pvc-panel [data-mode-scope][data-mode="progress"] [data-mode-group="threshold"],
-.pvc-panel [data-mode-scope][data-mode="threshold"] [data-mode-group="progress"] {
+   form readers still find them and a mode switched twice loses nothing.
+
+   Written as "hide every group this mode does not claim" rather than as a list
+   of pairs, because the pairs grow quadratically with the number of modes. A
+   group states which modes it belongs to as a space-separated list, matched
+   with `~=`, so the target and polarity fields can be claimed by progress and
+   steps at once instead of being written out twice. */
+.pvc-panel [data-mode-scope][data-mode="progress"] [data-mode-group]:not([data-mode-group~="progress"]),
+.pvc-panel [data-mode-scope][data-mode="threshold"] [data-mode-group]:not([data-mode-group~="threshold"]),
+.pvc-panel [data-mode-scope][data-mode="steps"] [data-mode-group]:not([data-mode-group~="steps"]) {
   display: none;
 }
 
@@ -1290,6 +1297,234 @@
 .pvc-panel .pvc-ladder-summary .notes { margin: 0; font-size: 11px; }
 
 .pvc-panel .pvc-track-card.pvc-threshold .pvc-ladder { margin-bottom: 6px; }
+
+/* --- Step strip --------------------------------------------------------- */
+
+/* A step track is drawn as one pip per step rather than as a bar, because the
+   steps genuinely are equal and countable — which is exactly what a threshold
+   ladder is not, and why that mode gets a continuous rail instead.
+
+   Naming is never carried by colour alone: a filled pip is solid as well as
+   accented, a named pip carries a dot, the current pip is outlined, and every
+   name is written out in the legend underneath. */
+
+.pvc .pvc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.pvc .pvc-step-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pvc .pvc-step-pip {
+  position: relative;
+  flex: 1 1 18px;
+  /* Keeps a twenty-step strip from collapsing its pips into slivers on a narrow
+     HUD: past this width the row wraps to a second line instead. */
+  min-width: 18px;
+  max-width: 40px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--pvc-neutral-700);
+  border-radius: var(--pvc-radius-sm);
+  background: var(--pvc-surface-2);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--pvc-neutral-600);
+}
+
+.pvc .pvc-step-pip.pvc-step-filled {
+  background: var(--pvc-accent-700);
+  border-color: var(--pvc-accent);
+  color: var(--pvc-accent-300);
+}
+
+.pvc .pvc-negative .pvc-step-pip.pvc-step-filled {
+  background: var(--pvc-negative-dim);
+  border-color: var(--pvc-negative);
+  color: var(--pvc-text);
+}
+
+/* The step the track is standing on. Drawn as a ring around the pip rather than
+   as another fill, so it stays legible on a filled pip and on an empty one. */
+.pvc .pvc-step-pip.pvc-step-current {
+  outline: 2px solid var(--pvc-accent-400);
+  outline-offset: 1px;
+}
+
+.pvc .pvc-negative .pvc-step-pip.pvc-step-current { outline-color: var(--pvc-negative); }
+
+/* A named step. The dot is what a player sees on a step whose name is still
+   hidden, so it has to read on an empty pip as well as on a filled one. */
+.pvc .pvc-step-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pvc-accent-300);
+}
+
+.pvc .pvc-step-pip.pvc-step-labelled { border-color: var(--pvc-accent-400); }
+
+.pvc .pvc-step-index { line-height: 1; }
+
+/* --- Step strip: long-track fallback ------------------------------------ */
+
+/* Past MAX_STEP_PIPS the pips would be thinner than the gaps between them, so
+   the strip becomes a bar with a tick at each named step. */
+.pvc .pvc-step-rail {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pvc-neutral-900);
+  overflow: visible;
+}
+
+.pvc .pvc-step-rail-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pvc-accent);
+}
+
+.pvc .pvc-negative .pvc-step-rail-fill { background: var(--pvc-negative); }
+
+.pvc .pvc-step-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--pvc-neutral-500);
+}
+
+.pvc .pvc-step-tick-reached { background: var(--pvc-accent-300); }
+
+.pvc .pvc-step-tick-current {
+  width: 4px;
+  margin-left: -2px;
+  background: var(--pvc-text);
+}
+
+/* --- Step legend -------------------------------------------------------- */
+
+/* The names, written out. Wraps rather than scrolling, because a step label is
+   short and a GM reading their own clock should see all of it at once. */
+.pvc .pvc-step-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+}
+
+.pvc .pvc-step-mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--pvc-neutral-500);
+}
+
+.pvc .pvc-step-mark-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--pvc-neutral-600);
+}
+
+.pvc .pvc-step-mark-reached { color: var(--pvc-neutral-400); }
+.pvc .pvc-step-mark-reached .pvc-step-mark-value { color: var(--pvc-accent-300); }
+
+.pvc .pvc-step-mark-current { color: var(--pvc-text); font-weight: 600; }
+
+/* A step whose name the reader has not earned yet. Italic and dimmed, so it is
+   obviously a placeholder rather than a step someone forgot to name. */
+.pvc .pvc-step-mark-hidden .pvc-step-mark-name {
+  font-style: italic;
+  opacity: 0.6;
+}
+
+/* --- Step badges -------------------------------------------------------- */
+
+.pvc .pvc-step-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pvc-accent-300);
+}
+
+.pvc .pvc-step-badge .pvc-type-mark { width: 12px; height: 12px; }
+
+#pvc-overlay .pvc-compact-step {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--pvc-accent-300);
+}
+
+/* --- Step label editor -------------------------------------------------- */
+
+/* The editor carries `pvc-threshold-editor` as well, so it inherits that
+   window's whole layout; only the per-row flags are new. */
+.pvc-step-editor .pvc-step-row { border-left-color: var(--pvc-accent-700); }
+
+.pvc-step-editor .pvc-step-row-unreachable { border-left-color: var(--pvc-negative); }
+
+.pvc-step-editor .pvc-step-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--pvc-neutral-500);
+}
+
+.pvc-step-editor .pvc-step-flag-reached { color: var(--pvc-accent-300); }
+.pvc-step-editor .pvc-step-flag-unreachable { color: var(--pvc-negative); }
+
+/* --- Step chat card ----------------------------------------------------- */
+
+.pvc-chat-card.pvc-step-card .pvc-chat-step {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.pvc-chat-card.pvc-step-card .pvc-chat-crossing {
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 3px solid #9184d9;
+}
+
+.pvc-chat-card.pvc-step-card .pvc-crossing-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.pvc-chat-card.pvc-step-card .pvc-crossing-passed {
+  margin: 2px 0 0;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.pvc-chat-card.pvc-step-card .pvc-chat-step-description {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
 
 /* --- Ladder editor ------------------------------------------------------ */
 

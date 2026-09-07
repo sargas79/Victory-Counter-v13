@@ -7,6 +7,46 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Step tracks.** A third mode. *Steps* counts to a target exactly as *Progress*
+  does — up from zero, completing there, with a polarity and the same reset — but
+  it is drawn as that many discrete steps, and the GM may give up to **10** of
+  those steps a name.
+
+  A step label owns **one number**. A track at 4 on a clock labelled at 3 and 6
+  has no label at all, because nothing in particular happens at 4. That is the
+  whole distinction from a threshold band, which owns every number from its rung
+  up to the next one: use thresholds when a number describes a *state*, and steps
+  when it marks an *event*.
+- **Step label editor.** Its own window per track, reached from **Edit Step
+  Labels** on the control panel's track card, and a deliberate twin of the ladder
+  editor — edits held in a local draft, written only on Save, rows sorted and
+  deduplicated by step on the way in. A label sitting past the track's target is
+  flagged as unreachable rather than dropped, so lowering the target never
+  destroys wording the GM wrote.
+- **Named-step announcements.** Reaching a named step can post a chat card naming
+  it and quoting its description, and a single large adjustment reports both the
+  step it landed on and the ones it passed on the way. Gated exactly like band
+  changes and independently of them: the world setting **Post Progress to Chat**
+  is still the master switch, the new per-track **Announce Named Steps** covers
+  milestones, and a per-label **Announce This Step** lets one pass in silence.
+  Moving between unnamed numbers announces nothing, and rewriting the labels
+  announces nothing.
+- **Step strip on the HUD.** One pip per step, filled to the current value, with
+  the current step outlined and named steps marked and listed by name underneath.
+  Deliberately segmented, which is the opposite of the threshold ladder's
+  continuous rail and for the mirror-image reason: steps genuinely are equal, and
+  bands are not. Past 20 steps the strip falls back to a bar with a tick at each
+  named step. Progress rings do not apply and are skipped, as on threshold
+  tracks.
+- **Per-track "Show Players Every Label".** Off by default, and it governs the
+  road *ahead*: players always see the whole strip and always read the name of a
+  step already reached — a milestone the party has hit is not a secret, and the
+  chat card has to be able to say what just happened — but a name still in front
+  of them shows only as a marked pip until the GM turns this on.
+- **New API surface:** `setSteps(id, labels)`, `getStep(id)` and
+  `toggleStepAnnounce(id)`, plus `MODES.STEPS`. Existing value calls
+  (`increase`, `decrease`, `adjust`, `setProgress`, `reset`) work unchanged on
+  all three modes.
 - **Threshold tracks.** A track now runs in one of two modes. *Progress* is what
   the module has always done: count up from zero to a target and complete there.
   *Thresholds* is new: the track starts at a value the GM sets, moves up **and**
@@ -83,6 +123,10 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   would be silently replaced by the shared manifest on install. The v13 build
   number the pinned track claims lives in one place, the `V13_VERIFIED`
   workflow variable.
+- **Schema 5.** Purely additive over schema 4: every existing track gains an
+  empty `steps` list plus `step`, `announceSteps` and `revealSteps`, none of
+  which the progress or threshold modes read. No stored value changes meaning,
+  and a track's mode is untouched.
 - **Schema 4.** Purely additive over schema 3: every existing track gains
   `mode: "progress"`, which is exactly what it already was, and no stored value
   changes meaning. New fields are `mode`, `start`, `min`, `max`, `thresholds`,

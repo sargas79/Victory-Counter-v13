@@ -7,12 +7,16 @@
  * screens stay in sync without a custom socket. Only a GM may write, which
  * Foundry also enforces server-side.
  *
- * A track measures itself in one of two modes. A *progress* track counts up
+ * A track measures itself in one of three modes. A *progress* track counts up
  * toward one target and completes there; there is no failure counter, and a
  * "bad" track is expressed with `type: "negative"`, which changes how it is
  * presented, not how it is counted. A *threshold* track instead starts at a
  * GM-set value, moves up and down between its own bounds, and takes its meaning
- * from the band it currently sits in — it never completes.
+ * from the band it currently sits in — it never completes. A *steps* track
+ * counts to a target exactly as a progress track does, but each number on the
+ * way may carry a name of its own; a name belongs to its number alone and says
+ * nothing about the numbers above it, which is what keeps it distinct from a
+ * band.
  *
  * @module victory-counter/state
  */
@@ -31,9 +35,12 @@ import {
   generateId,
   log,
   logError,
-  resolveBand
+  reachableSteps,
+  resolveBand,
+  resolveStep
 } from "./constants.js";
 import { migrateTrackData } from "./migration.js";
+import { stepDisplayName } from "./step-view.js";
 import { bandDisplayName } from "./threshold-view.js";
 
 /**
@@ -46,12 +53,21 @@ import { bandDisplayName } from "./threshold-view.js";
  */
 
 /**
+ * @typedef {object} StepLabel
+ * @property {string}  id          Stable identifier for this label.
+ * @property {number}  value       The step this label names. Exact, not a floor.
+ * @property {string}  label       GM-supplied step name.
+ * @property {string}  description What reaching this step means, shown to players.
+ * @property {boolean} announce    Whether reaching this step posts a chat card.
+ */
+
+/**
  * @typedef {object} Track
  * @property {number}  schema             Persisted schema version.
  * @property {string}  id                 Stable identifier for this track.
  * @property {boolean} active             Whether the track is currently running.
  * @property {string}  title              GM-supplied track name.
- * @property {string}  mode               One of TRACK_MODES: "progress" | "threshold".
+ * @property {string}  mode               One of TRACK_MODES: "progress" | "threshold" | "steps".
  * @property {string}  type               One of TRACK_TYPES: "positive" | "negative".
  * @property {number}  current            Current value. Never negative in progress mode.
  * @property {number}  target             Progress needed to complete. Progress mode only.
@@ -62,6 +78,10 @@ import { bandDisplayName } from "./threshold-view.js";
  * @property {string|null} band           Id of the band `current` sits in, or null.
  * @property {boolean} announceThresholds Whether band changes announce in chat.
  * @property {boolean} revealLadder       Whether players see the whole ladder.
+ * @property {StepLabel[]} steps          The named steps, ascending. Steps mode.
+ * @property {string|null} step           Id of the label on `current`, or null.
+ * @property {boolean} announceSteps      Whether reaching a named step announces.
+ * @property {boolean} revealSteps        Whether players see unreached step names.
  * @property {boolean} visibleToPlayers   Whether non-GM users may see this track.
  * @property {boolean} postToChat         Whether value changes announce in chat.
  * @property {string}  status             One of STATUS.
@@ -98,34 +118,74 @@ export function sanitizeThreshold(raw) {
 }
 
 /**
- * Sanitize a raw ladder: drop anything past the cap, drop duplicate values, and
- * sort ascending.
+ * Coerce arbitrary stored data into a valid StepLabel.
  *
- * Two rungs on the same number are dropped down to one because only one of them
- * could ever own that band — keeping both would make which description the
- * players see depend on array order. The first one written wins.
- *
- * The ascending sort is what lets {@link resolveBand} stop walking early, and it
- * is also the order the GM reads the ladder in.
+ * The row shape is identical to a threshold rung's, so the coercion is shared;
+ * only the value differs. A step label names a step on a track that counts from
+ * zero to its target, so it is clamped into 1..MAX_TARGET: step 0 is the empty
+ * track, which is a state rather than a milestone, and nothing above the cap on
+ * targets could ever be reached.
  *
  * @param {any} raw
- * @returns {Threshold[]}
+ * @returns {StepLabel}
  */
-export function sanitizeThresholds(raw) {
+export function sanitizeStepLabel(raw) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  return {
+    ...sanitizeThreshold(source),
+    value: clampInt(source.value, 1, LIMITS.MAX_TARGET)
+  };
+}
+
+/**
+ * Sanitize a raw list of rungs or step labels: drop anything past the cap, drop
+ * duplicate values, and sort ascending.
+ *
+ * Two entries on the same number are dropped down to one because only one of
+ * them could ever own that number — keeping both would make which description
+ * the players see depend on array order. The first one written wins.
+ *
+ * The ascending sort is what lets {@link resolveBand} stop walking early, and it
+ * is also the order the GM reads either list in.
+ *
+ * @param {any} raw
+ * @param {number} max Largest number of entries to keep.
+ * @param {(entry: any) => object} sanitize Row coercion for this kind of list.
+ * @returns {object[]}
+ */
+function sanitizeRungList(raw, max, sanitize) {
   const list = Array.isArray(raw) ? raw : [];
   const byValue = new Map();
   const seenIds = new Set();
 
   for (const entry of list) {
-    if (byValue.size >= LIMITS.MAX_THRESHOLDS) break;
-    const threshold = sanitizeThreshold(entry);
-    if (byValue.has(threshold.value)) continue;
-    if (seenIds.has(threshold.id)) threshold.id = generateId();
-    seenIds.add(threshold.id);
-    byValue.set(threshold.value, threshold);
+    if (byValue.size >= max) break;
+    const rung = sanitize(entry);
+    if (byValue.has(rung.value)) continue;
+    if (seenIds.has(rung.id)) rung.id = generateId();
+    seenIds.add(rung.id);
+    byValue.set(rung.value, rung);
   }
 
   return [...byValue.values()].sort((a, b) => a.value - b.value);
+}
+
+/**
+ * Sanitize a raw threshold ladder. See {@link sanitizeRungList}.
+ * @param {any} raw
+ * @returns {Threshold[]}
+ */
+export function sanitizeThresholds(raw) {
+  return sanitizeRungList(raw, LIMITS.MAX_THRESHOLDS, sanitizeThreshold);
+}
+
+/**
+ * Sanitize a raw list of step labels. See {@link sanitizeRungList}.
+ * @param {any} raw
+ * @returns {StepLabel[]}
+ */
+export function sanitizeSteps(raw) {
+  return sanitizeRungList(raw, LIMITS.MAX_STEP_LABELS, sanitizeStepLabel);
 }
 
 /**
@@ -175,6 +235,14 @@ export function sanitizeTrack(raw) {
   merged.thresholds = sanitizeThresholds(merged.thresholds);
   merged.announceThresholds = merged.announceThresholds !== false;
   merged.revealLadder = merged.revealLadder === true;
+
+  // Normalized in every mode too, and for the same reason: a GM who tries the
+  // step strip, switches to thresholds and switches back should find the labels
+  // they wrote still there.
+  merged.steps = sanitizeSteps(merged.steps);
+  merged.announceSteps = merged.announceSteps !== false;
+  merged.revealSteps = merged.revealSteps === true;
+
   merged.min = clampInt(merged.min, LIMITS.MIN_VALUE, LIMITS.MAX_VALUE);
   // Ordered after min so a max below it collapses to it rather than inverting
   // the range, which would make every clamp below unsatisfiable.
@@ -188,11 +256,25 @@ export function sanitizeTrack(raw) {
     // no longer exists. It is still *written* back, because announcements
     // compare the band before a change with the band after it.
     merged.band = resolveBand(merged.current, merged.thresholds)?.id ?? null;
+    merged.step = null;
   } else {
     // The floor of 0 here is the single guarantee that progress is never
     // negative; every progress-mode write path funnels through this function.
+    // Steps mode counts the same way, so it shares this branch outright.
     merged.current = clampInt(merged.current, 0, LIMITS.MAX_COUNT);
     merged.band = null;
+    // Derived and stored for the same pair of reasons `band` is: a deleted
+    // label must not leave a dangling id behind, and reaching a label is
+    // announced by comparing the id before a change with the id after it.
+    //
+    // Resolved against the reachable labels only. `current` is not bounded by
+    // `target` — overshoot lets it climb past, and lowering the target leaves it
+    // where it was — so the raw list would happily hand back a label the strip
+    // has no pip for.
+    merged.step =
+      merged.mode === TRACK_MODES.STEPS
+        ? resolveStep(merged.current, reachableSteps(merged.steps, merged.target))?.id ?? null
+        : null;
   }
 
   const change = merged.lastChange ?? {};
@@ -217,7 +299,8 @@ export function sanitizeTrack(raw) {
  * A threshold track has no finish line — it moves between bands for as long as
  * the GM keeps it open — so it is always running. That is what keeps the
  * "reached its target" notification and the completion styling off a track that
- * merely climbed to its top band.
+ * merely climbed to its top band. A steps track does have a finish line, its
+ * target, and so completes exactly as a progress track does.
  *
  * @param {Track} t
  * @returns {string}
@@ -314,6 +397,20 @@ export function allowsOvershoot() {
  */
 export function isThresholdTrack(track) {
   return track?.mode === TRACK_MODES.THRESHOLD;
+}
+
+/**
+ * Whether a track counts to a target in named steps.
+ *
+ * Only its *presentation* and its announcements differ from a progress track:
+ * everything that reads or writes the value treats the two identically, which
+ * is why nothing below this line has a steps branch.
+ *
+ * @param {Track} track
+ * @returns {boolean}
+ */
+export function isStepTrack(track) {
+  return track?.mode === TRACK_MODES.STEPS;
 }
 
 /**
@@ -848,6 +945,79 @@ export async function toggleThresholdAnnounce(id) {
 }
 
 /**
+ * Replace a track's step labels.
+ *
+ * Posts no chat card, for the same reason rewriting a ladder does not: naming a
+ * step is not the same event as the track arriving at it, and a GM tidying up
+ * wording mid-session should not fire "you have reached the gate" at the table.
+ * The label on the current step is recomputed during sanitization, so the new
+ * list takes effect at once.
+ *
+ * @param {string} id
+ * @param {any[]} steps
+ * @returns {Promise<Track|null>}
+ */
+export async function setTrackSteps(id, steps) {
+  if (!assertGM()) return null;
+  const current = getTracks();
+  const track = current.find((t) => t.id === id);
+  if (!track) {
+    ui.notifications.warn(game.i18n.localize("PVC.Notify.NoTrack"));
+    return null;
+  }
+
+  const clean = sanitizeSteps(steps);
+  const requested = Array.isArray(steps) ? steps.length : 0;
+  if (requested > clean.length) {
+    // Same courtesy as the ladder: name the two reasons a row can vanish rather
+    // than letting it look like the editor dropped it at random.
+    ui.notifications.warn(
+      game.i18n.format("PVC.Notify.StepsDropped", {
+        dropped: requested - clean.length,
+        max: LIMITS.MAX_STEP_LABELS
+      })
+    );
+  }
+
+  const result = await persistTracks(
+    current.map((t) => (t.id === id ? { ...t, steps: clean } : t)),
+    { reason: game.i18n.localize("PVC.Reason.StepsUpdated") }
+  );
+  if (result) ui.notifications.info(game.i18n.localize("PVC.Notify.StepsSaved"));
+  return result ? result.find((t) => t.id === id) ?? null : null;
+}
+
+/**
+ * Flip whether this track announces reaching a named step. Applies immediately;
+ * the world setting "Post Progress to Chat" still gates every card, and each
+ * label can opt out of announcing on its own.
+ * @param {string} id
+ * @returns {Promise<Track|null>}
+ */
+export async function toggleStepAnnounce(id) {
+  if (!assertGM()) return null;
+  const current = getTracks();
+  const track = current.find((t) => t.id === id);
+  if (!track?.active) {
+    ui.notifications.warn(game.i18n.localize("PVC.Notify.NoTrack"));
+    return null;
+  }
+  const announceSteps = track.announceSteps === false;
+  const result = await persistTracks(
+    current.map((t) => (t.id === id ? { ...t, announceSteps } : t)),
+    { reason: game.i18n.localize("PVC.Reason.Reconfigured") }
+  );
+  if (result) {
+    ui.notifications.info(
+      game.i18n.localize(
+        announceSteps ? "PVC.Notify.NowAnnouncingSteps" : "PVC.Notify.NotAnnouncingSteps"
+      )
+    );
+  }
+  return result ? result.find((t) => t.id === id) ?? null : null;
+}
+
+/**
  * Restore the single-level undo snapshot for the whole track list.
  * @returns {Promise<Track[]|null>}
  */
@@ -932,6 +1102,49 @@ export function describeCrossing(track, previous) {
 }
 
 /**
+ * Describe the named steps a step track moved onto or across, or null when it
+ * moved only through unnamed numbers.
+ *
+ * Unlike a band crossing, this is computed from the two *values* rather than
+ * from a stored id, because a step label owns one number and a track can pass
+ * over it without ever coming to rest on it. A +4 that runs from 1 to 5 across
+ * labels at 3 and 5 has reached 5 and passed 3, and both belong in the card.
+ *
+ * `reached` is the label the track is now standing on, if any; `passed` are the
+ * labels strictly between the two values, read in the order they were crossed.
+ * A move that touches neither returns null.
+ *
+ * @param {Track} track    Stored state after the change.
+ * @param {Track} previous Stored state before it.
+ * @returns {{reached: StepLabel|null, passed: StepLabel[], direction: 1|-1}|null}
+ */
+export function describeStepCrossing(track, previous) {
+  if (!isStepTrack(track) || !isStepTrack(previous)) return null;
+
+  const from = Number(previous.current);
+  const to = Number(track.current);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
+
+  // Both halves read the reachable labels only: a label off the strip is not a
+  // milestone this track can arrive at or travel over, so it must not be
+  // announced as either.
+  const onStrip = reachableSteps(track.steps, track.target);
+  const reached = onStrip.find((s) => s.id === track.step) ?? null;
+
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  // Strictly between, so the label the track came to rest on is reported once,
+  // as `reached`, and the one it started on is not reported at all.
+  const passed = onStrip.filter((s) => s.value > lo && s.value < hi);
+
+  const direction = to > from ? 1 : -1;
+  if (direction < 0) passed.reverse();
+
+  if (!reached && !passed.length) return null;
+  return { reached, passed, direction };
+}
+
+/**
  * Post a chat card summarizing a track's new state.
  *
  * Three gates decide whether anything is posted, and they are independent:
@@ -939,7 +1152,10 @@ export function describeCrossing(track, previous) {
  * 1. The world setting is the master switch and vetoes everything.
  * 2. `postToChat` opts the track into announcing *value changes*.
  * 3. `announceThresholds`, plus the entered rung's own `announce`, opts a
- *    threshold track into announcing *band changes*.
+ *    threshold track into announcing *band changes*; `announceSteps`, plus the
+ *    touched labels' own `announce`, does the same for a step track's named
+ *    steps. A track is in one mode at a time, so only one half of gate 3 can
+ *    ever apply to it.
  *
  * A change that trips both 2 and 3 posts one card carrying both, not two cards.
  * A progress track can never trip 3, so its behaviour is unchanged.
@@ -964,6 +1180,7 @@ async function postUpdateCard(track, previous, reason) {
   if (!enabled) return;
 
   const crossing = describeCrossing(track, previous);
+  const stepCrossing = describeStepCrossing(track, previous);
   const announceChange = track.postToChat !== false;
   const announceCrossing =
     Boolean(crossing) &&
@@ -971,11 +1188,25 @@ async function postUpdateCard(track, previous, reason) {
     // A drop below the lowest rung has no threshold object to consult, so the
     // track-level toggle is the only gate it can answer to.
     (crossing.entered ? crossing.entered.announce !== false : true);
+  // Every label the move touched gets a say, because a single large adjustment
+  // can reach one label and pass another: silencing the card would need all of
+  // them to have opted out, not just the one the track came to rest on.
+  const announceSteps =
+    Boolean(stepCrossing) &&
+    track.announceSteps !== false &&
+    [stepCrossing.reached, ...stepCrossing.passed].some(
+      (label) => label && label.announce !== false
+    );
 
-  if (!announceChange && !announceCrossing) return;
+  if (!announceChange && !announceCrossing && !announceSteps) return;
 
   const threshold = isThresholdTrack(track);
-  const template = threshold ? "threshold-card.hbs" : "chat-card.hbs";
+  const stepped = isStepTrack(track);
+  const template = threshold
+    ? "threshold-card.hbs"
+    : stepped
+      ? "step-card.hbs"
+      : "chat-card.hbs";
 
   try {
     const content = await foundry.applications.handlebars.renderTemplate(
@@ -988,7 +1219,8 @@ async function postUpdateCard(track, previous, reason) {
           `PVC.Type.${track.type === TRACK_TYPES.NEGATIVE ? "Negative" : "Positive"}`
         ),
         delta: track.current - previous.current,
-        ...(threshold ? thresholdCardContext(track, crossing, announceCrossing) : {})
+        ...(threshold ? thresholdCardContext(track, crossing, announceCrossing) : {}),
+        ...(stepped ? stepCardContext(track, stepCrossing, announceSteps) : {})
       }
     );
 
@@ -1031,6 +1263,36 @@ function thresholdCardContext(track, crossing, showCrossing) {
           rising: crossing.direction > 0,
           leftLabel: bandDisplayName(crossing.left),
           passed: crossing.passed.map((t) => bandDisplayName(t))
+        }
+      : null
+  };
+}
+
+/**
+ * The steps-specific half of a chat card's context.
+ *
+ * `showCrossing` is passed in for the same reason as above: a card posted for a
+ * value change on a track whose labels are muted still has to say where the
+ * track now stands, it just does not make an announcement of the milestone.
+ *
+ * @param {Track} track
+ * @param {ReturnType<typeof describeStepCrossing>} crossing
+ * @param {boolean} showCrossing
+ * @returns {object}
+ */
+function stepCardContext(track, crossing, showCrossing) {
+  const label = resolveStep(track.current, reachableSteps(track.steps, track.target));
+
+  return {
+    stepped: true,
+    stepLabel: label ? stepDisplayName(label) : "",
+    stepDescription: label?.description ?? "",
+    crossing: showCrossing && crossing
+      ? {
+          rising: crossing.direction > 0,
+          reached: crossing.reached ? stepDisplayName(crossing.reached) : "",
+          reachedDescription: crossing.reached?.description ?? "",
+          passed: crossing.passed.map((s) => stepDisplayName(s))
         }
       : null
   };
