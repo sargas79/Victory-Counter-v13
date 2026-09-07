@@ -14,7 +14,7 @@
  * @module victory-counter/step-view
  */
 
-import { LIMITS, progressPercent, resolveStep } from "./constants.js";
+import { LIMITS, progressPercent, reachableSteps, resolveStep } from "./constants.js";
 
 /**
  * A step label's display name.
@@ -60,9 +60,14 @@ export function buildStepView(track, { revealAll = false } = {}) {
   const current = Number(track.current) || 0;
   const displayTitle = track.title || game.i18n.localize("PVC.DefaultTitle");
 
+  // Only the labels actually on the strip. `current` is not bounded by `target`,
+  // so the stored list can hold a label above it — kept for the GM, but off this
+  // clock, and it must not surface as the current step or as a pip.
+  const onStrip = reachableSteps(track.steps, target);
+
   // Keyed by step so each pip can find its own label in one lookup rather than
   // scanning the list once per pip.
-  const byValue = new Map(track.steps.map((step) => [Number(step.value), step]));
+  const byValue = new Map(onStrip.map((step) => [Number(step.value), step]));
 
   const pips = [];
   for (let index = 1; index <= target; index++) {
@@ -92,12 +97,10 @@ export function buildStepView(track, { revealAll = false } = {}) {
     });
   }
 
-  const label = resolveStep(current, track.steps);
+  const label = resolveStep(current, onStrip);
   // Only offered when the whole strip is public. Handing a player the next
   // milestone is exactly what "Show Players Every Label" is off to prevent.
-  const next = revealAll
-    ? track.steps.find((step) => Number(step.value) > current && Number(step.value) <= target)
-    : null;
+  const next = revealAll ? onStrip.find((step) => Number(step.value) > current) : null;
 
   return {
     stepped: true,
@@ -111,6 +114,9 @@ export function buildStepView(track, { revealAll = false } = {}) {
     stepDescription: label?.description ?? "",
     nextLabel: next ? stepDisplayName(next) : "",
     nextValue: next ? Number(next.value) : null,
+    // Deliberately the whole stored list, not just the reachable half: this is
+    // the panel's "N step(s) named" summary, and a GM who lowered the target
+    // needs to see that the labels they wrote are still there.
     stepCount: track.steps.length,
     percent: Math.round(progressPercent(current, target)),
     progressLabel: game.i18n.format(

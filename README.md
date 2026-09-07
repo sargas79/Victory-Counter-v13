@@ -230,7 +230,11 @@ that pip shows only as marked.
 
 Up to **10 steps** on one track may be named, and two labels cannot share a step.
 A label past the track's target is kept but flagged as unreachable in the editor,
-so lowering the target does not destroy wording the GM wrote.
+so lowering the target does not destroy wording the GM wrote — and it stays off
+the clock while it is up there: it draws no pip, never announces, and is not
+what the counter or the API reports as the current step, even if the value
+climbs past the target through **Allow Progress Beyond Target**. Raise the
+target again and it comes straight back.
 
 Step tracks are drawn as pips up to 20 steps. Past that the strip becomes a bar
 with a tick at each named step, which stays readable where forty slivers would
@@ -564,38 +568,43 @@ resolved. Run it once per v13 world before trusting the rest of the plan.
 41. Lower the Target to 4 and reopen the editor. The label at step 6 is flagged
     *Past the target* rather than deleted; raise the Target back to 6 and the
     flag clears.
-42. Turn **Announce Named Steps** off and cross a named step. No card. Turn it
+42. With the value at 6 and the Target lowered to 4 (or with **Allow Progress
+    Beyond Target** on and the value pushed past it), the card names no step, no
+    chat card announces one, and `getStep()` returns null: a label above the
+    target is off the strip, not merely undrawn. Raise the Target back and the
+    step reads normally again.
+43. Turn **Announce Named Steps** off and cross a named step. No card. Turn it
     back on but turn that step's own **Announce This Step** off, and cross it
     again: still no card. Turn both on: exactly one card.
-43. With **Show Players Every Label** off, log in as a player. Every pip and both
+44. With **Show Players Every Label** off, log in as a player. Every pip and both
     marks are visible; the name of a step already reached is readable, and one
     still ahead reads *Not yet revealed*. Turn the setting on: the name appears.
-44. With the GM and player both connected, press `+`. The player's strip, pip
+45. With the GM and player both connected, press `+`. The player's strip, pip
     fill and step name update without a reload.
-45. Set the Target to 40. The strip becomes a bar with a tick at each named step
+46. Set the Target to 40. The strip becomes a bar with a tick at each named step
     rather than forty pips.
-46. Collapse the HUD. The step chip shows the value, the target and the name of
+47. Collapse the HUD. The step chip shows the value, the target and the name of
     the step it is standing on.
-47. Switch a step track to **Thresholds** mode and back. The labels are still
+48. Switch a step track to **Thresholds** mode and back. The labels are still
     there, and no chat card was posted for either switch.
 
 **Terminology**
 
-48. Search the HUD, panel, dialogs, chat cards and settings for the word
+49. Search the HUD, panel, dialogs, chat cards and settings for the word
     "successes". It should not appear.
 
 **Permissions and sync**
 
-49. As a player, try the API: `game.modules.get("victory-counter").api
+50. As a player, try the API: `game.modules.get("victory-counter").api
     .increase(id)`. It is refused with a GM-only notification.
-50. With a GM and a player connected, change a track on the GM screen. The
+51. With a GM and a player connected, change a track on the GM screen. The
     player's HUD updates immediately without a reload.
-51. Hide a track from players. It disappears from the player HUD, and its chat
+52. Hide a track from players. It disappears from the player HUD, and its chat
     cards are whispered — including band-change cards.
 
 **Systems**
 
-52. Load the same world under a different game system (or a second world running
+53. Load the same world under a different game system (or a second world running
     one). The HUD, panel, chat cards and settings all behave identically and the
     console stays clean.
 

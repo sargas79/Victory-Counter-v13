@@ -329,12 +329,48 @@ export function resolveBand(value, thresholds) {
 }
 
 /**
+ * The step labels that are actually on a track's strip: those from 1 up to its
+ * target.
+ *
+ * A label past the target is kept in storage on purpose — a GM who lowers the
+ * target still owns the wording they wrote, and raising it again brings the step
+ * back — but it is off the clock while the target stands where it does, and the
+ * step editor tells the GM exactly that.
+ *
+ * Filtering has to happen on the way *out*, at every read, because `current` is
+ * not bounded by `target`: the "allow progress beyond target" setting lets it
+ * climb past, and lowering the target leaves an already-higher value where it
+ * was. Without this, a value of 9 on a six-step clock would resolve a label the
+ * strip has no pip for, and the editor's "can never be reached" would be a lie.
+ *
+ * This is the single definition of "reachable step" that the strip, the stored
+ * `step` id, the announcements and the public API all read, so none of them can
+ * disagree about which labels exist.
+ *
+ * @param {Array<{value: number}>} steps
+ * @param {number} target
+ * @returns {object[]}
+ */
+export function reachableSteps(steps, target) {
+  const list = Array.isArray(steps) ? steps : [];
+  const ceiling = Number(target);
+  if (!Number.isFinite(ceiling)) return [];
+  return list.filter((step) => {
+    const value = Number(step?.value);
+    return Number.isFinite(value) && value >= 1 && value <= ceiling;
+  });
+}
+
+/**
  * The step label sitting exactly on a value, or null when that number is unnamed.
  *
  * Deliberately an exact match rather than a reuse of {@link resolveBand}: a band
  * owns every number from its rung up to the next one, while a step label names
  * one number and says nothing about the ones around it. That difference is the
  * whole reason steps mode exists alongside threshold mode.
+ *
+ * Callers pass the list from {@link reachableSteps}, never the raw stored array:
+ * a label off the strip must not resolve.
  *
  * @param {number} value
  * @param {Array<{id: string, value: number}>} steps

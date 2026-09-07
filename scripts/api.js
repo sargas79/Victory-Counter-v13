@@ -11,6 +11,7 @@ import {
   TRACK_MODES,
   TRACK_TYPES,
   logError,
+  reachableSteps,
   resolveBand,
   resolveStep,
   warn
@@ -215,13 +216,18 @@ export const api = {
   /**
    * The label sitting on a step track's current value, or null when that step is
    * unnamed (or the track is not a step track at all).
+   *
+   * Resolved against the labels on the strip, so this agrees with what the card
+   * shows and with what the chat card announced — a label above the target is
+   * stored but off the clock, and never answers here.
+   *
    * @param {string} id
    * @returns {object|null}
    */
   getStep: (id) => {
     const track = getTrack(id);
     if (track?.mode !== TRACK_MODES.STEPS) return null;
-    return resolveStep(track.current, track.steps);
+    return resolveStep(track.current, reachableSteps(track.steps, track.target));
   },
 
   /** Flip whether a step track announces reaching a named step in chat. */

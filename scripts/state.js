@@ -35,6 +35,7 @@ import {
   generateId,
   log,
   logError,
+  reachableSteps,
   resolveBand,
   resolveStep
 } from "./constants.js";
@@ -265,9 +266,14 @@ export function sanitizeTrack(raw) {
     // Derived and stored for the same pair of reasons `band` is: a deleted
     // label must not leave a dangling id behind, and reaching a label is
     // announced by comparing the id before a change with the id after it.
+    //
+    // Resolved against the reachable labels only. `current` is not bounded by
+    // `target` — overshoot lets it climb past, and lowering the target leaves it
+    // where it was — so the raw list would happily hand back a label the strip
+    // has no pip for.
     merged.step =
       merged.mode === TRACK_MODES.STEPS
-        ? resolveStep(merged.current, merged.steps)?.id ?? null
+        ? resolveStep(merged.current, reachableSteps(merged.steps, merged.target))?.id ?? null
         : null;
   }
 
@@ -1119,13 +1125,17 @@ export function describeStepCrossing(track, previous) {
   const to = Number(track.current);
   if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
 
-  const reached = track.steps.find((s) => s.id === track.step) ?? null;
+  // Both halves read the reachable labels only: a label off the strip is not a
+  // milestone this track can arrive at or travel over, so it must not be
+  // announced as either.
+  const onStrip = reachableSteps(track.steps, track.target);
+  const reached = onStrip.find((s) => s.id === track.step) ?? null;
 
   const lo = Math.min(from, to);
   const hi = Math.max(from, to);
   // Strictly between, so the label the track came to rest on is reported once,
   // as `reached`, and the one it started on is not reported at all.
-  const passed = track.steps.filter((s) => s.value > lo && s.value < hi);
+  const passed = onStrip.filter((s) => s.value > lo && s.value < hi);
 
   const direction = to > from ? 1 : -1;
   if (direction < 0) passed.reverse();
@@ -1271,7 +1281,7 @@ function thresholdCardContext(track, crossing, showCrossing) {
  * @returns {object}
  */
 function stepCardContext(track, crossing, showCrossing) {
-  const label = resolveStep(track.current, track.steps);
+  const label = resolveStep(track.current, reachableSteps(track.steps, track.target));
 
   return {
     stepped: true,
