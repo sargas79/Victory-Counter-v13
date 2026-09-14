@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-14
+
 ### Added
 
 - **Rune circle.** A second way to *draw* a track, chosen per track and offered
