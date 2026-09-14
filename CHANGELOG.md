@@ -5,6 +5,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-14
+
 ### Added
 
 - **Rune circle.** A second way to *draw* a track, chosen per track and offered
@@ -47,6 +49,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not touch counting at all: every track gains `display: "standard"` — the way it
   was already drawn — and an empty `runes` list. A world that upgrades sees no
   visible change.
+
+### Fixed
+
+- **Step strip rows.** The pips wrapped wherever the card's width happened to
+  break, leaving ragged rows with the leftovers stretched across the last one.
+  The strip now lays out ten pips to a row — step 11 always starts the second
+  row — and the pips are smaller. The marker on a named step is now red
+  and sits on the pip's corner, so it stands out on any fill and never covers a
+  two-digit number.
 
 ### Notes
 

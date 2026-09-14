@@ -49,6 +49,10 @@
   --pvc-negative-dim: rgba(239, 127, 110, 0.5);
   --pvc-negative-glow: rgba(239, 127, 110, 0.42);
 
+  /* Named-step marker on the step strip. A saturated red rather than the
+     salmon above, so a marker still stands out on a negative track's pips. */
+  --pvc-marker: #ff3b30;
+
   --pvc-radius-sm: 4px;
   --pvc-radius-md: 8px;
 
@@ -1325,27 +1329,28 @@
   margin: 4px 0 8px;
 }
 
+/* Ten pips to a row, always: step 11 starts the second row, 21 the third. A
+   fixed column count keeps every row aligned under the one above it, where a
+   wrapping flex row broke wherever the card's width happened to fall and
+   stretched the leftover pips on the last line. Columns shrink with a narrow
+   card but never grow past the cap, so a wide HUD does not blow them up. */
 .pvc .pvc-step-strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 20px));
   gap: 4px;
 }
 
 .pvc .pvc-step-pip {
   position: relative;
-  flex: 1 1 18px;
-  /* Keeps a twenty-step strip from collapsing its pips into slivers on a narrow
-     HUD: past this width the row wraps to a second line instead. */
-  min-width: 18px;
-  max-width: 40px;
-  height: 20px;
+  min-width: 0;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--pvc-neutral-700);
-  border-radius: var(--pvc-radius-sm);
+  border-radius: 3px;
   background: var(--pvc-surface-2);
-  font-size: 10px;
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
   color: var(--pvc-neutral-600);
 }
@@ -1365,22 +1370,28 @@
 /* The step the track is standing on. Drawn as a ring around the pip rather than
    as another fill, so it stays legible on a filled pip and on an empty one. */
 .pvc .pvc-step-pip.pvc-step-current {
+  /* No offset: the ring has to fit inside the 4px gap without touching the
+     neighbouring pip. */
   outline: 2px solid var(--pvc-accent-400);
-  outline-offset: 1px;
+  outline-offset: 0;
 }
 
 .pvc .pvc-negative .pvc-step-pip.pvc-step-current { outline-color: var(--pvc-negative); }
 
 /* A named step. The dot is what a player sees on a step whose name is still
-   hidden, so it has to read on an empty pip as well as on a filled one. */
+   hidden, so it has to read on an empty pip as well as on a filled one — hence
+   red with a dark rim, which separates it from both the accent and the
+   negative fill. It straddles the corner so it never covers a two-digit index
+   on a pip this small. */
 .pvc .pvc-step-dot {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 4px;
-  height: 4px;
+  top: -3px;
+  right: -3px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--pvc-accent-300);
+  background: var(--pvc-marker);
+  box-shadow: 0 0 0 1px var(--pvc-surface-2);
 }
 
 .pvc .pvc-step-pip.pvc-step-labelled { border-color: var(--pvc-accent-400); }
